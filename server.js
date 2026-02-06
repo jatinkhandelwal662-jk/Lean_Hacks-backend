@@ -110,7 +110,7 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
         const newComplaint = req.body;
 
         // 2. Validate & Sanitize (Important for Vaani/Web consistency)
-        if (!newComplaint.id) newComplaint.id = "WEB-" + Math.floor(Math.random() * 10000);
+        if (!newComplaint.id) newComplaint.id = "SIGW-" + Math.floor(Math.random() * 1000);
         if (!newComplaint.status) newComplaint.status = "Pending";
         if (!newComplaint.date) newComplaint.date = new Date().toISOString().split('T')[0];
         if (!newComplaint.lat) newComplaint.lat = "28.6139"; // Default Delhi
@@ -255,5 +255,6 @@ app.get("/api/new-complaint", (req, res) => {
 });
 
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
 
 
