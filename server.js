@@ -249,6 +249,11 @@ app.post("/api/audit-cluster", async (req, res) => {
     }
 });
 
+app.get("/api/new-complaint", (req, res) => {
+    // Send the live list of complaints to the frontend
+    res.json(complaints);
+});
 
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
 
