@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Issue | Delhi Sudarshan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --dark: #0f172a;
+            --light: #f8fafc;
+        }
+
+        body { font-family: 'Outfit', sans-serif; background: var(--light); color: var(--dark); margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+
+        .form-container {
+            background: white;
+            width: 100%; max-width: 500px;
+            padding: 30px; border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+        }
+
+        /* Header */
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 1.5rem; color: var(--primary); margin: 0; font-weight: 800; }
+        .header p { font-size: 0.9rem; color: #64748b; margin-top: 5px; }
+        .logo { width: 50px; height: 50px; margin-bottom: 10px; border-radius: 10px; }
+
+        /* Form Elements */
+        .input-group { margin-bottom: 20px; text-align: left; }
+        label { font-size: 0.85rem; font-weight: 700; color: #334155; display: block; margin-bottom: 8px; }
+        
+        input, select, textarea {
+            width: 100%; padding: 14px; border: 2px solid #e2e8f0; border-radius: 12px;
+            font-size: 1rem; font-family: 'Outfit'; outline: none; transition: 0.3s;
+            background: #f8fafc; color: var(--dark); box-sizing: border-box; /* Fix padding issue */
+        }
+        
+        input:focus, select:focus, textarea:focus { border-color: var(--primary); background: white; }
+
+        /* GPS Button */
+        .gps-btn {
+            background: #dbeafe; color: var(--primary); border: none; padding: 10px;
+            border-radius: 8px; font-weight: 600; font-size: 0.8rem; cursor: pointer;
+            display: flex; align-items: center; gap: 5px; margin-top: 5px; width: fit-content;
+        }
+        .gps-btn.locked { background: #dcfce7; color: #16a34a; }
+
+        /* Submit Button */
+        .submit-btn {
+            width: 100%; background: var(--primary); color: white; border: none;
+            padding: 16px; border-radius: 14px; font-size: 1.1rem; font-weight: 700;
+            cursor: pointer; transition: 0.3s; margin-top: 10px;
+            display: flex; justify-content: center; align-items: center; gap: 10px;
+        }
+        .submit-btn:hover { background: #1d4ed8; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2); }
+        .submit-btn:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+
+        /* Loader */
+        .loader { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s infinite; display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <div class="form-container">
+        <div class="header">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/8/84/Government_of_India_logo.svg" alt="Logo" class="logo">
+            <h1>Delhi Sudarshan</h1>
+            <p>Citizen Grievance Reporting Portal</p>
+        </div>
+
+        <form id="complaintForm" onsubmit="submitComplaint(event)">
+            
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="name" placeholder="Enter your name" required>
+            </div>
+
+            <div class="input-group">
+                <label>Mobile Number (For SMS Updates)</label>
+                <div style="position: relative;">
+                    <i class="ri-phone-line" style="position: absolute; left: 14px; top: 16px; color: #94a3b8;"></i>
+                    <input type="tel" id="phone" placeholder="98765 43210" style="padding-left: 40px;" required>
+                </div>
+                <small style="color:#64748b; font-size:0.7rem;">You will receive an automated confirmation SMS.</small>
+            </div>
+
+            <div class="input-group">
+                <label>Complaint Category</label>
+                <select id="category" onchange="autoSelectDept()">
+                    <option value="Pot Hole">Broken Road / Pothole</option>
+                    <option value="Garbage Dump">Garbage Dump / Sanitation</option>
+                    <option value="Street Light">Street Light Not Working</option>
+                    <option value="Water Leakage">Water Pipe Leakage</option>
+                    <option value="Sewer Blockage">Sewer Overflow</option>
+                    <option value="Unauthorized Construction">Unauthorized Construction</option>
+                </select>
+            </div>
+
+            <input type="hidden" id="dept" value="PWD Delhi">
+
+            <div class="input-group">
+                <label>Location</label>
+                <input type="text" id="location" placeholder="Landmark (e.g., Near Metro Gate 2)" required>
+                <button type="button" class="gps-btn" onclick="getGPS()" id="gpsBtn">
+                    <i class="ri-map-pin-line"></i> Auto-Detect GPS
+                </button>
+            </div>
+
+            <div class="input-group">
+                <label>Description</label>
+                <textarea id="desc" rows="3" placeholder="Describe the issue in detail..."></textarea>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">
+                <span>Register Complaint</span>
+                <div class="loader" id="loader"></div>
+            </button>
+
+        </form>
+    </div>
+
+    <script>
+        // Default Coordinates (Delhi Center)
+        let lat = "28.6139";
+        let long = "77.2090";
+
+        // 1. AUTO-ASSIGN DEPARTMENT
+        function autoSelectDept() {
+            const cat = document.getElementById('category').value;
+            const deptInput = document.getElementById('dept');
+            
+            const mapping = {
+                "Pot Hole": "PWD Delhi",
+                "Garbage Dump": "MCD Sanitation",
+                "Street Light": "BSES / Tata Power",
+                "Water Leakage": "Delhi Jal Board",
+                "Sewer Blockage": "Delhi Jal Board",
+                "Unauthorized Construction": "DDA"
+            };
+            deptInput.value = mapping[cat] || "General Administration";
+        }
+
+        // 2. GPS LOGIC
+        function getGPS() {
+            const btn = document.getElementById('gpsBtn');
+            btn.innerHTML = '<div class="loader" style="display:block; border-color:#2563eb; border-top-color:transparent; width:15px; height:15px;"></div> Locating...';
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        lat = position.coords.latitude.toFixed(6);
+                        long = position.coords.longitude.toFixed(6);
+                        btn.innerHTML = `<i class="ri-map-pin-check-fill"></i> GPS Locked (${lat}, ${long})`;
+                        btn.classList.add('locked');
+                    },
+                    (error) => {
+                        btn.innerHTML = '<i class="ri-error-warning-fill"></i> GPS Denied';
+                        alert("Please enable location services for better accuracy.");
+                    }
+                );
+            }
+        }
+
+        // 3. SUBMIT LOGIC (Sends to your existing Backend)
+        async function submitComplaint(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('submitBtn');
+            const loader = document.getElementById('loader');
+            const btnText = btn.querySelector('span');
+            
+            // Loading State
+            btn.disabled = true;
+            btnText.style.display = 'none';
+            loader.style.display = 'block';
+
+            // Prepare Data for your Server
+            // NOTE: We generate the ID here or let the server do it. 
+            // Since your server expects specific fields, we match them here.
+            const formData = {
+                id: "MOB-" + Math.floor(Math.random() * 90000 + 10000), // Random ID
+                type: document.getElementById('category').value,
+                loc: document.getElementById('location').value,
+                status: "Pending", // Default status
+                date: new Date().toISOString().split('T')[0], // Today's date
+                phone: document.getElementById('phone').value, // Used for SMS!
+                dept: document.getElementById('dept').value,
+                desc: document.getElementById('desc').value,
+                lat: lat,
+                long: long,
+                img: "" // No image initially
+            };
+
+            try {
+                // Hitting your existing API
+                const response = await fetch('/api/new-complaint', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Success UI
+                    document.querySelector('.form-container').innerHTML = `
+                        <div style="text-align:center; padding:20px;">
+                            <i class="ri-checkbox-circle-fill" style="font-size:4rem; color:#10b981;"></i>
+                            <h2 style="color:#0f172a;">Complaint Registered!</h2>
+                            <p style="color:#64748b;">ID: <strong>${formData.id}</strong></p>
+                            <p style="background:#eff6ff; color:#2563eb; padding:10px; border-radius:8px; font-size:0.9rem; margin-top:15px;">
+                                <i class="ri-message-2-line"></i> An SMS confirmation has been sent to ${formData.phone}
+                            </p>
+                            <button onclick="location.reload()" class="submit-btn" style="margin-top:20px;">File Another</button>
+                        </div>
+                    `;
+                } else {
+                    throw new Error("Server rejected the request");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Failed to submit. Please check your connection.");
+                btn.disabled = false;
+                btnText.style.display = 'block';
+                loader.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
