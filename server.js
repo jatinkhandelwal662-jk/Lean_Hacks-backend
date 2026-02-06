@@ -99,34 +99,55 @@ app.post("/api/reject-complaint", async (req, res) => {
 });
 
 // 📨 API 3: SMS
-app.post("/api/new-complaint", async (req, res) => {
-    const data = req.body;
-    complaints.unshift(data); 
-    console.log("Registered:", data.id);
-
-    // SMS LOGIC
-    let recipient = data.phone;
-    if (recipient) {
-        recipient = recipient.replace(/\s+/g, '').replace(/-/g, '');
-        if (!recipient.startsWith('+')) recipient = '+91' + recipient;
-    } else {
-        recipient = ADMIN_PHONE;
-    }
-
-    const uploadLink = `${PUBLIC_URL}/upload.html?id=${data.id}`;
-
+// ==========================================
+// 🚀 API: HANDLE NEW COMPLAINTS (WEB & VAANI)
+// ==========================================
+app.post("/api/new-complaint", express.json(), async (req, res) => {
     try {
-        await client.messages.create({
-            body: `दिल्ली सुदर्शन\nशिकायत आईडी: ${data.id} रजिस्टर्ड |\n\n📷लाइव साक्ष्य अपलोड करें:\n${uploadLink}`,
-            from: TWILIO_PHONE,
-            to: recipient 
-        });
-        console.log(`SMS Sent to ${recipient}`);
-        console.log(`${PUBLIC_URL}/upload.html?id=${data.id}`);
-    } catch (err) {
-        console.error("SMS Failed (Expected on Trial):", err.message);
+        console.log("📥 Data Received (Web/Vaani):", req.body);
+
+        // 1. Get the data
+        const newComplaint = req.body;
+
+        // 2. Validate & Sanitize (Important for Vaani/Web consistency)
+        if (!newComplaint.id) newComplaint.id = "WEB-" + Math.floor(Math.random() * 10000);
+        if (!newComplaint.status) newComplaint.status = "Pending";
+        if (!newComplaint.date) newComplaint.date = new Date().toISOString().split('T')[0];
+        if (!newComplaint.lat) newComplaint.lat = "28.6139"; // Default Delhi
+        if (!newComplaint.long) newComplaint.long = "77.2090";
+
+        // 3. Add to the Global Dashboard List (Top of the list)
+        complaints.unshift(newComplaint);
+
+        // 4. Send SMS Confirmation (Twilio)
+        // This works for both Web forms AND Vaani voice-to-text data
+        if (newComplaint.phone && newComplaint.phone.length > 9) {
+            
+            // Format number for Twilio (+91...)
+            let recipient = newComplaint.phone.replace(/\s+/g, '').replace(/-/g, '');
+            if (!recipient.startsWith('+')) recipient = '+91' + recipient;
+
+            const uploadLink = `${PUBLIC_URL}/upload.html?id=${newComplaint.id}`;
+            
+            try {
+                await client.messages.create({
+                    body: `दिल्ली सुदर्शन\nComplaint Registered!\nID: ${newComplaint.id}\nCategory: ${newComplaint.type}\n\nUpload Evidence:\n${uploadLink}`,
+                    from: TWILIO_PHONE,
+                    to: recipient
+                });
+                console.log(`✅ SMS Sent to ${recipient}`);
+            } catch (smsError) {
+                console.error("⚠️ SMS Failed:", smsError.message);
+            }
+        }
+
+        // 5. Success Response
+        res.json({ success: true, id: newComplaint.id });
+
+    } catch (error) {
+        console.error("❌ Server Error:", error);
+        res.status(500).json({ success: false, error: "Internal Server Error" });
     }
-    res.json({ success: true });
 });
 
 // Photo Upload
@@ -196,7 +217,7 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
 });
 
 app.get("/api/new-complaint", (req, res) => res.json(complaints));
-// 🕵️‍♂️ API 4: SURPRISE CLUSTER AUDIT (The "Random Sample" Call)
+// 🕵️‍♂️ API 4:CLUSTER(The "Random Sample" Call)
 app.post("/api/audit-cluster", async (req, res) => {
     const { loc, dept, count } = req.body;
     
@@ -230,3 +251,4 @@ app.post("/api/audit-cluster", async (req, res) => {
 
 
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
