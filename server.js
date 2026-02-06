@@ -10,7 +10,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const app = express();
 
 // CONFIGURATION
-const PUBLIC_URL = "https://delhi-sudarshan-backend.onrender.com"; 
+const PUBLIC_URL = "https://lean-hacks-backend.onrender.com"; 
 
 // --- TWILIO CREDENTIALS---
 const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -227,5 +227,6 @@ app.post("/api/audit-cluster", async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
 
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
