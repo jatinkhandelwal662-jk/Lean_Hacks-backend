@@ -5,6 +5,8 @@ import twilio from "twilio";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import imap from 'imap-simple';
+import { simpleParser } from 'mailparser';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app = express();
@@ -248,6 +250,138 @@ app.post("/api/audit-cluster", async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==========================================
+// 📧 AI EMAIL AGENT (IMAP LISTENER)
+// ==========================================
+
+// 1. CONFIGURATION (REPLACE WITH YOUR DETAILS)
+const EMAIL_USER = "jkkhandelwal010@gmail.com";
+const EMAIL_PASS = "came mnrd fbph bqkf";
+
+const imapConfig = {
+    imap: {
+        user: EMAIL_USER,
+        password: EMAIL_PASS,
+        host: 'imap.gmail.com',
+        port: 993,
+        tls: true,
+        authTimeout: 3000
+    }
+};
+
+// 2. THE AI EMAIL PROCESSOR
+async function checkEmails() {
+    try {
+        const connection = await imap.connect(imapConfig);
+        await connection.openBox('INBOX');
+
+        // Search for Unread Emails
+        const searchCriteria = ['UNSEEN'];
+        const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: true };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length === 0) {
+            connection.end();
+            return;
+        }
+
+        console.log(`📧 Found ${messages.length} new emails! AI Processing...`);
+
+        for (const item of messages) {
+            const all = item.parts.find(part => part.which === 'TEXT');
+            const id = item.attributes.uid;
+            const idHeader = "Imap-Id: "+id + "\r\n";
+            
+            // Parse Email Body
+            const mail = await simpleParser(idHeader + all.body);
+            const emailBody = mail.text; 
+
+            // 🤖 USE GEMINI TO EXTRACT DATA
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const prompt = `
+                Analyze this email text and extract complaint details for a government portal.
+                
+                EMAIL TEXT: "${emailBody}"
+                
+                Task: Extract these fields into JSON: 
+                - name (Citizen Name)
+                - phone (Mobile Number)
+                - type (Complaint Type e.g., Pothole, Garbage, Street Light)
+                - loc (Location)
+                - desc (Description)
+                
+                Rules:
+                - If phone is missing, use "+91 00000 00000".
+                - If type is unclear, categorize it as "General Grievance".
+                - Return ONLY valid JSON. No Markdown.
+            `;
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            // Clean up Markdown formatting if Gemini adds it
+            let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            try {
+                const data = JSON.parse(text);
+                
+                // REGISTER THE COMPLAINT
+                const newComplaint = {
+                    id: "MAIL-" + Math.floor(1000 + Math.random() * 9000),
+                    type: data.type,
+                    loc: data.loc,
+                    status: "Pending",
+                    date: new Date().toISOString().split('T')[0],
+                    phone: data.phone,
+                    dept: "Auto-Assigned",
+                    desc: data.desc + ` (Via Email: ${data.name})`,
+                    img: "",
+                    lat: "28.6139", 
+                    long: "77.2090"
+                };
+
+                // Add to Global Array
+                complaints.unshift(newComplaint);
+                console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
+
+                // SEND SMS (Reuse logic)
+                sendEmailSMS(newComplaint);
+
+            } catch (jsonErr) {
+                console.error("❌ AI Parsing Failed:", text);
+            }
+        }
+        
+        connection.end();
+
+    } catch (error) {
+        // console.error("IMAP Error (Ignore if just connection timeout):", error.message);
+    }
+}
+
+// 3. HELPER SMS FUNCTION
+async function sendEmailSMS(data) {
+    if (!data.phone || data.phone.includes("00000")) return;
+    
+    let recipient = data.phone.replace(/\s+/g, '').replace(/-/g, '');
+    if (!recipient.startsWith('+')) recipient = '+91' + recipient;
+
+    const uploadLink = `${PUBLIC_URL}/upload.html?id=${data.id}`;
+
+    try {
+        await client.messages.create({
+            body: `दिल्ली सुदर्शन\nEmail Received!\nComplaint ID: ${data.id}\nStatus: Registered\n\nUpload Evidence here:\n${uploadLink}`,
+            from: TWILIO_PHONE,
+            to: recipient
+        });
+        console.log(`📩 SMS Sent to ${recipient}`);
+    } catch (err) {
+        console.error("SMS Failed:", err.message);
+    }
+}
+
+// 4. RUN CHECKER EVERY 30 SECONDS
+setInterval(checkEmails, 30000);
+console.log("📧 AI Email Agent Started...");
 
 app.get("/api/new-complaint", (req, res) => {
     // Send the live list of complaints to the frontend
@@ -255,6 +389,7 @@ app.get("/api/new-complaint", (req, res) => {
 });
 
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
 
 
 
