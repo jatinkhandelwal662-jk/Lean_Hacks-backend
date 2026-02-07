@@ -6,7 +6,7 @@
     <title>Report Issue | Delhi Sudarshan</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="shortcut icon" href="favicon-ds.jpg" type="image/jpg">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <style>
         :root {
             --primary: #2563eb;
@@ -93,12 +93,13 @@
             <div class="input-group">
                 <label>Complaint Category</label>
                 <select id="category" onchange="autoSelectDept()">
-                    <option value="Pot Hole">Broken Road / Pothole</option>
+                    <option value="Potholes">Broken Road / Pothole</option>
                     <option value="Garbage Dump">Garbage Dump / Sanitation</option>
                     <option value="Street Light">Street Light Not Working</option>
+                    <option value="No Power">Power Cut</option>
                     <option value="Water Leakage">Water Pipe Leakage</option>
                     <option value="Sewer Blockage">Sewer Overflow</option>
-                    <option value="Unauthorized Construction">Unauthorized Construction</option>
+                    <option value="Other">Other</option>
                 </select>
             </div>
 
@@ -138,10 +139,10 @@
             const mapping = {
                 "Pot Hole": "PWD Delhi",
                 "Garbage Dump": "MCD Sanitation",
-                "Street Light": "BSES / Tata Power",
+                "Street Light": "BSES Rajdhani",
                 "Water Leakage": "Delhi Jal Board",
                 "Sewer Blockage": "Delhi Jal Board",
-                "Unauthorized Construction": "DDA"
+                "Other": "Dept-Assigned"
             };
             deptInput.value = mapping[cat] || "General Administration";
         }
@@ -184,7 +185,7 @@
             // NOTE: We generate the ID here or let the server do it. 
             // Since your server expects specific fields, we match them here.
             const formData = {
-                id: "MOB-" + Math.floor(Math.random() * 90000 + 10000), // Random ID
+                id: "SIGW-" + Math.floor(Math.random() * 9000 + 1000), // Random ID
                 type: document.getElementById('category').value,
                 loc: document.getElementById('location').value,
                 status: "Pending", // Default status
@@ -233,5 +234,4 @@
         }
     </script>
 </body>
-
 </html>
