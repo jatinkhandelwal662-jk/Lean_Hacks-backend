@@ -8,6 +8,7 @@ import fs from "fs";
 import imap from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import sgMail from '@sendgrid/mail';
 
 const app = express();
 
@@ -27,15 +28,24 @@ const API_KEY_SECRET = process.env.TWILIO_API_KEY_SECRET;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// EMAIL CONFIGURATION (for receiving only, not sending)
-const EMAIL_USER = "jkkhandelwal010@gmail.com";
-const EMAIL_PASS = "came mnrd fbph bqkf";
+// SENDGRID CONFIGURATION
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY; // Add this to your .env file
+sgMail.setApiKey(SENDGRID_API_KEY);
 
-// SAFETY CHECK: Ensure keys exist before starting
+// EMAIL CONFIGURATION (Updated credentials)
+const EMAIL_USER = "grievancedelhicivic@gmail.com";
+const EMAIL_PASS = "qngl tpqu ppbd hmlt";
+const VERIFIED_SENDER = "grievancedelhicivic@gmail.com"; // Must match SendGrid verified sender
+
+// SAFETY CHECK
 if (!ACCOUNT_SID || !API_KEY_SID) {
     console.error("CRITICAL ERROR: .env file is missing or empty!");
     console.error("Please create a .env file with your Twilio keys.");
     process.exit(1);
+}
+
+if (!SENDGRID_API_KEY) {
+    console.warn("⚠️  WARNING: SENDGRID_API_KEY not found. Email auto-replies will be disabled.");
 }
 
 const client = twilio(ACCOUNT_SID, AUTH_TOKEN);
@@ -65,6 +75,155 @@ function fileToGenerativePart(path, mimeType) {
       mimeType
     },
   };
+}
+
+// NEW: SENDGRID EMAIL AUTO-REPLY FUNCTION
+async function sendAutoReplyEmail(recipientEmail, complaintData) {
+    if (!SENDGRID_API_KEY) {
+        console.log("⚠️  SendGrid not configured, skipping email auto-reply");
+        return false;
+    }
+
+    const uploadLink = `${PUBLIC_URL}/upload.html?id=${complaintData.id}`;
+    
+    const msg = {
+        to: recipientEmail,
+        from: {
+            email: VERIFIED_SENDER,
+            name: 'Delhi Sudarshan - Grievance Portal'
+        },
+        subject: `✅ Complaint Registered - ID: ${complaintData.id}`,
+        html: `
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+        .info-row { margin: 10px 0; }
+        .label { font-weight: bold; color: #667eea; }
+        .button { display: inline-block; background: #667eea; color: white !important; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
+        .button:hover { background: #764ba2; }
+        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏛️ दिल्ली सुदर्शन</h1>
+            <p style="margin: 10px 0 0 0; font-size: 14px;">Citizen Grievance Portal</p>
+        </div>
+        
+        <div class="content">
+            <h2 style="color: #28a745; margin-top: 0;">✅ Complaint Successfully Registered!</h2>
+            
+            <p>Dear Citizen,</p>
+            
+            <p>Thank you for reaching out to Delhi Sudarshan. Your complaint has been successfully registered in our system and will be forwarded to the concerned department.</p>
+            
+            <div class="info-box">
+                <h3 style="margin-top: 0; color: #667eea;">📋 Complaint Details</h3>
+                <div class="info-row">
+                    <span class="label">Complaint ID:</span> ${complaintData.id}
+                </div>
+                <div class="info-row">
+                    <span class="label">Type:</span> ${complaintData.type || 'General Grievance'}
+                </div>
+                <div class="info-row">
+                    <span class="label">Location:</span> ${complaintData.loc || 'Delhi'}
+                </div>
+                <div class="info-row">
+                    <span class="label">Status:</span> <span style="color: #ffc107; font-weight: bold;">Pending Review</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Date Registered:</span> ${complaintData.date}
+                </div>
+            </div>
+            
+            <div class="warning">
+                <strong>⚠️ Important Next Step:</strong><br>
+                To expedite the resolution of your complaint, please upload supporting evidence (photos/documents) using the link below:
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="${uploadLink}" class="button">📤 Upload Evidence</a>
+            </div>
+            
+            <p style="font-size: 14px; color: #666; margin-top: 20px;">
+                <strong>What happens next?</strong><br>
+                1. Our AI system will verify your uploaded evidence<br>
+                2. Your complaint will be assigned to the relevant department<br>
+                3. You will receive updates via email and SMS<br>
+                4. The department will work to resolve your issue
+            </p>
+            
+            <div class="footer">
+                <p><strong>Need Help?</strong></p>
+                <p>Reply to this email or contact us at:<br>
+                📧 ${VERIFIED_SENDER}<br>
+                📞 Support: 1800-XXX-XXXX</p>
+                
+                <p style="margin-top: 20px;">
+                    This is an automated message from Delhi Sudarshan Grievance Portal.<br>
+                    Please do not reply directly to this email for new complaints.
+                </p>
+                
+                <p style="margin-top: 20px; font-size: 11px; color: #999;">
+                    © 2025 Delhi Sudarshan. All rights reserved.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+        `,
+        text: `
+Delhi Sudarshan - Complaint Registered
+
+Dear Citizen,
+
+Your complaint has been successfully registered!
+
+Complaint Details:
+- ID: ${complaintData.id}
+- Type: ${complaintData.type || 'General Grievance'}
+- Location: ${complaintData.loc || 'Delhi'}
+- Status: Pending Review
+- Date: ${complaintData.date}
+
+IMPORTANT: Please upload supporting evidence (photos/documents) here:
+${uploadLink}
+
+What happens next?
+1. Our AI system will verify your uploaded evidence
+2. Your complaint will be assigned to the relevant department
+3. You will receive updates via email and SMS
+4. The department will work to resolve your issue
+
+Thank you for using Delhi Sudarshan Grievance Portal.
+
+---
+This is an automated message.
+        `
+    };
+
+    try {
+        await sgMail.send(msg);
+        console.log(`📧 SendGrid: Auto-reply email sent to ${recipientEmail}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ SendGrid Error:`, error.message);
+        if (error.response) {
+            console.error(`   Status: ${error.response.statusCode}`);
+            console.error(`   Body:`, error.response.body);
+        }
+        return false;
+    }
 }
 
 // API 1: GENERATE WEBRTC TOKEN
@@ -280,7 +439,7 @@ app.get("/api/check-audit-status/:sid", (req, res) => {
 });
 
 // ==========================================
-// 📧 AI EMAIL AGENT (IMAP LISTENER)
+// 📧 AI EMAIL AGENT WITH SENDGRID AUTO-REPLY
 // ==========================================
 
 const imapConfig = {
@@ -294,7 +453,7 @@ const imapConfig = {
     }
 };
 
-// EMAIL PROCESSOR (SMS ONLY, NO EMAIL AUTO-REPLY)
+// EMAIL PROCESSOR WITH SENDGRID AUTO-REPLY
 async function checkEmails() {
     try {
         const connection = await imap.connect(imapConfig);
@@ -366,11 +525,12 @@ async function checkEmails() {
                 complaints.unshift(newComplaint);
                 console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
                 
-                // Send SMS confirmation if phone available
+                // 🆕 SEND SENDGRID AUTO-REPLY EMAIL
+                await sendAutoReplyEmail(senderEmail, newComplaint);
+                
+                // Also send SMS if phone available
                 if (data.phone && data.phone !== "Not Provided" && data.phone.length > 9) {
                     await sendComplaintSMS(newComplaint);
-                } else {
-                    console.log(`ℹ️  No phone number found for ${newComplaint.id}, SMS skipped`);
                 }
 
             } catch (jsonErr) {
@@ -408,11 +568,19 @@ async function sendComplaintSMS(data) {
 
 // RUN EMAIL CHECKER EVERY 30 SECONDS
 setInterval(checkEmails, 30000);
-console.log("📧 AI Email Agent Started (SMS notifications only)...");
+console.log("📧 AI Email Agent Started with SendGrid Auto-Reply...");
+
+// Verify SendGrid on startup
+if (SENDGRID_API_KEY) {
+    console.log("✅ SendGrid configured and ready");
+} else {
+    console.warn("⚠️  SendGrid not configured - email auto-replies disabled");
+}
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Backend running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
+    console.log(`📧 Email: ${EMAIL_USER}`);
     console.log(`✅ Server is ready`);
 });
