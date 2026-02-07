@@ -57,9 +57,9 @@ app.get("/api/token", (req, res) => {
     });
 
     const token = new AccessToken(
-        ACCOUNT_SID,
-        API_KEY_SID,
-        API_KEY_SECRET,
+        TWILIO_ACCOUNT_SID,
+        TWILIO_API_KEY_SID,
+        TWILIO_API_KEY_SECRET,
         { identity: identity }
     );
 
@@ -388,38 +388,8 @@ app.get("/api/new-complaint", (req, res) => {
     res.json(complaints);
 });
 
-
-// ==========================================
-// 📞 API: GENERATE VOICE TOKEN (For Citizen.html)
-// ==========================================
-app.get("/api/voice-token", (req, res) => {
-    try {
-        const identity = 'citizen'; // Matches 'client:citizen' in your audit call
-
-        // 1. Create a "Grant" (Permission to receive calls)
-        const voiceGrant = new VoiceGrant({
-            incomingAllow: true, // Allow browser to RING
-        });
-
-        // 2. Create the Token using API Keys
-        const token = new AccessToken(
-            ACCOUNT_SID,
-            API_KEY_SID,
-            API_KEY_SECRET,
-            { identity: identity }
-        );
-
-        token.addGrant(voiceGrant);
-
-        // 3. Send Token to Browser
-        res.json({ token: token.toJwt() });
-
-    } catch (error) {
-        console.error("Token Error:", error);
-        res.status(500).json({ error: "Failed to generate token" });
-    }
-});
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
 
 
 
