@@ -24,6 +24,10 @@ const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER;
 const API_KEY_SID = process.env.TWILIO_API_KEY_SID;
 const API_KEY_SECRET = process.env.TWILIO_API_KEY_SECRET;
 
+// GEMINI AI INITIALIZATION (FIXED)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
 // SAFETY CHECK: Ensure keys exist before starting
 if (!ACCOUNT_SID || !API_KEY_SID) {
     console.error("CRITICAL ERROR: .env file is missing or empty!");
@@ -48,22 +52,32 @@ const upload = multer({ storage: multer.diskStorage({
     filename: (req, file, cb) => { cb(null, req.body.id + '-' + Date.now() + path.extname(file.originalname)); }
 })});
 
-// API 1: GENERATE WEBRTC TOKEN
+// HELPER FUNCTION FOR AI IMAGE PROCESSING (FIXED)
+function fileToGenerativePart(filePath, mimeType) {
+    return {
+        inlineData: {
+            data: fs.readFileSync(filePath).toString("base64"),
+            mimeType
+        },
+    };
+}
+
+// API 1: GENERATE WEBRTC TOKEN (FIXED)
 app.get("/api/token", (req, res) => {
     const identity = "citizen"; 
 
-    const videoGrant = new VoiceGrant({
+    const voiceGrant = new VoiceGrant({
         incomingAllow: true, // Allow receiving calls
     });
 
     const token = new AccessToken(
-        TWILIO_ACCOUNT_SID,
-        TWILIO_API_KEY_SID,
-        TWILIO_API_KEY_SECRET,
+        ACCOUNT_SID,  // FIXED: Use correct variable name
+        API_KEY_SID,
+        API_KEY_SECRET,
         { identity: identity }
     );
 
-    token.addGrant(videoGrant);
+    token.addGrant(voiceGrant);
 
     res.json({ token: token.toJwt(), identity: identity });
 });
@@ -218,7 +232,8 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
     }
 });
 
-app.get("/api/new-complaint", (req, res) => res.json(complaints));
+app.get("/api/complaints", (req, res) => res.json(complaints));
+
 // 🕵️‍♂️ API 4:CLUSTER(The "Random Sample" Call)
 app.post("/api/audit-cluster", async (req, res) => {
     const { loc, dept, count } = req.body;
@@ -297,7 +312,7 @@ async function checkEmails() {
             const emailBody = mail.text; 
 
             // 🤖 USE GEMINI TO EXTRACT DATA
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             const prompt = `
                 Analyze this email text and extract complaint details for a government portal.
                 
@@ -383,17 +398,5 @@ async function sendEmailSMS(data) {
 setInterval(checkEmails, 30000);
 console.log("📧 AI Email Agent Started...");
 
-app.get("/api/new-complaint", (req, res) => {
-    // Send the live list of complaints to the frontend
-    res.json(complaints);
-});
-
+// Start server
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
-
-
-
-
-
-
-
-
