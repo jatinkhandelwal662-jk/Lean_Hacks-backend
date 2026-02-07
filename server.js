@@ -116,34 +116,52 @@ app.post("/api/reject-complaint", async (req, res) => {
 });
 
 // 📨 API 3: SMS
-app.post("/api/new-complaint", async (req, res) => {
-    const data = req.body;
-    complaints.unshift(data); 
-    console.log("Registered:", data.id);
-
-    // SMS LOGIC
-    let recipient = data.phone;
-    if (recipient) {
-        recipient = recipient.replace(/\s+/g, '').replace(/-/g, '');
-        if (!recipient.startsWith('+')) recipient = '+91' + recipient;
-    } else {
-        recipient = ADMIN_PHONE;
-    }
-
-    const uploadLink = `${PUBLIC_URL}/upload.html?id=${data.id}`;
-
+app.post("/api/new-complaint", express.json(), async (req, res) => {
     try {
-        await client.messages.create({
-            body: `दिल्ली सुदर्शन\nशिकायत आईडी: ${data.id} रजिस्टर्ड |\n\n📷लाइव साक्ष्य अपलोड करें:\n${uploadLink}`,
-            from: TWILIO_PHONE,
-            to: recipient 
-        });
-        console.log(`SMS Sent to ${recipient}`);
-        console.log(`${PUBLIC_URL}/upload.html?id=${data.id}`);
-    } catch (err) {
-        console.error("SMS Failed (Expected on Trial):", err.message);
+        console.log("📥 Data Received (Web/Vaani):", req.body);
+
+        // 1. Get the data
+        const newComplaint = req.body;
+
+        // 2. Validate & Sanitize (Important for Vaani/Web consistency)
+        if (!newComplaint.id) newComplaint.id = "SIGW-" + Math.floor(Math.random() * 1000);
+        if (!newComplaint.status) newComplaint.status = "Pending";
+        if (!newComplaint.date) newComplaint.date = new Date().toISOString().split('T')[0];
+        if (!newComplaint.lat) newComplaint.lat = "28.6139"; // Default Delhi
+        if (!newComplaint.long) newComplaint.long = "77.2090";
+
+        // 3. Add to the Global Dashboard List (Top of the list)
+        complaints.unshift(newComplaint);
+
+        // 4. Send SMS Confirmation (Twilio)
+        // This works for both Web forms AND Vaani voice-to-text data
+        if (newComplaint.phone && newComplaint.phone.length > 9) {
+            
+            // Format number for Twilio (+91...)
+            let recipient = newComplaint.phone.replace(/\s+/g, '').replace(/-/g, '');
+            if (!recipient.startsWith('+')) recipient = '+91' + recipient;
+
+            const uploadLink = `${PUBLIC_URL}/upload.html?id=${newComplaint.id}`;
+            
+            try {
+                await client.messages.create({
+                    body: `दिल्ली सुदर्शन\nComplaint Registered!\nID: ${newComplaint.id}\nCategory: ${newComplaint.type}\n\nUpload Evidence:\n${uploadLink}`,
+                    from: TWILIO_PHONE,
+                    to: recipient
+                });
+                console.log(`✅ SMS Sent to ${recipient}`);
+            } catch (smsError) {
+                console.error("⚠️ SMS Failed:", smsError.message);
+            }
+        }
+
+        // 5. Success Response
+        res.json({ success: true, id: newComplaint.id });
+
+    } catch (error) {
+        console.error("❌ Server Error:", error);
+        res.status(500).json({ success: false, error: "Internal Server Error" });
     }
-    res.json({ success: true });
 });
 
 // Photo Upload API
@@ -283,4 +301,135 @@ app.get("/api/check-audit-status/:sid", (req, res) => {
     const status = auditResults[sid] || 'pending';
     res.json({ status: status });
 });
+
+// ==========================================
+// 📧 AI EMAIL AGENT (IMAP LISTENER)
+// ==========================================
+
+// 1. CONFIGURATION (REPLACE WITH YOUR DETAILS)
+const EMAIL_USER = "jkkhandelwal010@gmail.com";
+const EMAIL_PASS = "came mnrd fbph bqkf";
+
+const imapConfig = {
+    imap: {
+        user: EMAIL_USER,
+        password: EMAIL_PASS,
+        host: 'imap.gmail.com',
+        port: 993,
+        tls: true,
+        authTimeout: 3000
+    }
+};
+
+// 2. THE AI EMAIL PROCESSOR
+async function checkEmails() {
+    try {
+        const connection = await imap.connect(imapConfig);
+        await connection.openBox('INBOX');
+
+        // Search for Unread Emails
+        const searchCriteria = ['UNSEEN'];
+        const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: true };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length === 0) {
+            connection.end();
+            return;
+        }
+
+        console.log(`📧 Found ${messages.length} new emails! AI Processing...`);
+
+        for (const item of messages) {
+            const all = item.parts.find(part => part.which === 'TEXT');
+            const id = item.attributes.uid;
+            const idHeader = "Imap-Id: "+id + "\r\n";
+            
+            // Parse Email Body
+            const mail = await simpleParser(idHeader + all.body);
+            const emailBody = mail.text; 
+
+            // 🤖 USE GEMINI TO EXTRACT DATA
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const prompt = `
+                Analyze this email text and extract complaint details for a government portal.
+                
+                EMAIL TEXT: "${emailBody}"
+                
+                Task: Extract these fields into JSON: 
+                - name (Citizen Name)
+                - phone (Mobile Number)
+                - type (Complaint Type e.g., Pothole, Garbage, Street Light)
+                - loc (Location)
+                - desc (Description)
+                
+                Rules:
+                - If phone is missing, use "+91 00000 00000".
+                - If type is unclear, categorize it as "General Grievance".
+                - Return ONLY valid JSON. No Markdown.
+            `;
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            // Clean up Markdown formatting if Gemini adds it
+            let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            try {
+                const data = JSON.parse(text);
+                
+                // REGISTER THE COMPLAINT
+                const newComplaint = {
+                    id: "MAIL-" + Math.floor(1000 + Math.random() * 9000),
+                    type: data.type,
+                    loc: data.loc,
+                    status: "Pending",
+                    date: new Date().toISOString().split('T')[0],
+                    phone: data.phone,
+                    dept: "Auto-Assigned",
+                    desc: data.desc + ` (Via Email: ${data.name})`,
+                    img: "",
+                    lat: "28.6139", 
+                    long: "77.2090"
+                };
+
+                // Add to Global Array
+                complaints.unshift(newComplaint);
+                console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
+
+                // SEND SMS (Reuse logic)
+                sendEmailSMS(newComplaint);
+
+            } catch (jsonErr) {
+                console.error("❌ AI Parsing Failed:", text);
+            }
+        }
+        
+        connection.end();
+
+    } catch (error) {
+        // console.error("IMAP Error (Ignore if just connection timeout):", error.message);
+    }
+}
+
+// 3. HELPER SMS FUNCTION
+async function sendEmailSMS(data) {
+    if (!data.phone || data.phone.includes("00000")) return;
+    
+    let recipient = data.phone.replace(/\s+/g, '').replace(/-/g, '');
+    if (!recipient.startsWith('+')) recipient = '+91' + recipient;
+
+    const uploadLink = `${PUBLIC_URL}/upload.html?id=${data.id}`;
+
+    try {
+        await client.messages.create({
+            body: `दिल्ली सुदर्शन\nEmail Received!\nComplaint ID: ${data.id}\nStatus: Registered\n\nUpload Evidence here:\n${uploadLink}`,
+            from: TWILIO_PHONE,
+            to: recipient
+        });
+        console.log(`📩 SMS Sent to ${recipient}`);
+    } catch (err) {
+        console.error("SMS Failed:", err.message);
+    }
+}
+
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
