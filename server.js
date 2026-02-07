@@ -24,16 +24,45 @@ const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER;
 const API_KEY_SID = process.env.TWILIO_API_KEY_SID;
 const API_KEY_SECRET = process.env.TWILIO_API_KEY_SECRET;
 
-// GEMINI AI INITIALIZATION (FIXED)
+// GEMINI AI INITIALIZATION
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// SAFETY CHECK: Ensure keys exist before starting
-if (!ACCOUNT_SID || !API_KEY_SID) {
-    console.error("CRITICAL ERROR: .env file is missing or empty!");
-    console.error("Please create a .env file with your Twilio keys.");
+// ENHANCED SAFETY CHECK with Diagnostics
+console.log("🔍 Checking Twilio Configuration...");
+console.log("Account SID exists:", !!ACCOUNT_SID, ACCOUNT_SID ? `(${ACCOUNT_SID.substring(0, 6)}...)` : "MISSING");
+console.log("Auth Token exists:", !!AUTH_TOKEN);
+console.log("API Key SID exists:", !!API_KEY_SID, API_KEY_SID ? `(${API_KEY_SID.substring(0, 6)}...)` : "MISSING");
+console.log("API Key Secret exists:", !!API_KEY_SECRET);
+console.log("Twilio Phone exists:", !!TWILIO_PHONE);
+
+if (!ACCOUNT_SID || !AUTH_TOKEN) {
+    console.error("❌ CRITICAL: Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
     process.exit(1);
 }
+
+if (!API_KEY_SID || !API_KEY_SECRET) {
+    console.error("❌ CRITICAL: Missing TWILIO_API_KEY_SID or TWILIO_API_KEY_SECRET");
+    console.error("⚠️  You need to create a NEW API Key in Twilio Console:");
+    console.error("    1. Go to: https://console.twilio.com/us1/develop/voice/settings/api-keys");
+    console.error("    2. Click 'Create API Key'");
+    console.error("    3. Save BOTH the SID and Secret immediately!");
+    process.exit(1);
+}
+
+// Verify Account SID and API Key SID formats
+if (!ACCOUNT_SID.startsWith('AC')) {
+    console.error("❌ ACCOUNT_SID must start with 'AC'. Got:", ACCOUNT_SID.substring(0, 6));
+    process.exit(1);
+}
+
+if (!API_KEY_SID.startsWith('SK')) {
+    console.error("❌ API_KEY_SID must start with 'SK'. Got:", API_KEY_SID.substring(0, 6));
+    console.error("⚠️  Make sure you're using the API Key SID, not the Auth Token!");
+    process.exit(1);
+}
+
+console.log("✅ Twilio credentials format looks correct");
 
 const client = twilio(ACCOUNT_SID, AUTH_TOKEN);
 const AccessToken = twilio.jwt.AccessToken;
@@ -52,7 +81,7 @@ const upload = multer({ storage: multer.diskStorage({
     filename: (req, file, cb) => { cb(null, req.body.id + '-' + Date.now() + path.extname(file.originalname)); }
 })});
 
-// HELPER FUNCTION FOR AI IMAGE PROCESSING (FIXED)
+// HELPER FUNCTION FOR AI IMAGE PROCESSING
 function fileToGenerativePart(filePath, mimeType) {
     return {
         inlineData: {
@@ -62,24 +91,65 @@ function fileToGenerativePart(filePath, mimeType) {
     };
 }
 
-// API 1: GENERATE WEBRTC TOKEN (FIXED)
+// API 1: GENERATE WEBRTC TOKEN (WITH ENHANCED ERROR HANDLING)
 app.get("/api/token", (req, res) => {
-    const identity = "citizen"; 
+    try {
+        console.log("📞 Token request received");
+        
+        const identity = "citizen"; 
 
-    const voiceGrant = new VoiceGrant({
-        incomingAllow: true, // Allow receiving calls
+        const voiceGrant = new VoiceGrant({
+            incomingAllow: true,
+            outgoingApplicationSid: undefined, // Not using TwiML app
+        });
+
+        const token = new AccessToken(
+            ACCOUNT_SID,
+            API_KEY_SID,
+            API_KEY_SECRET,
+            { 
+                identity: identity,
+                ttl: 3600 // Token valid for 1 hour
+            }
+        );
+
+        token.addGrant(voiceGrant);
+        const jwt = token.toJwt();
+
+        console.log("✅ Token generated successfully for identity:", identity);
+        
+        res.json({ 
+            token: jwt, 
+            identity: identity 
+        });
+
+    } catch (error) {
+        console.error("❌ Token Generation Error:", error.message);
+        console.error("Stack:", error.stack);
+        
+        res.status(500).json({ 
+            success: false,
+            error: "Failed to generate token",
+            message: error.message,
+            hint: "Check if your Twilio API Key is valid and belongs to the correct account"
+        });
+    }
+});
+
+// DIAGNOSTIC ENDPOINT (Remove after debugging)
+app.get("/api/test-credentials", (req, res) => {
+    res.json({
+        accountSid: ACCOUNT_SID ? `${ACCOUNT_SID.substring(0, 6)}...${ACCOUNT_SID.substring(ACCOUNT_SID.length - 4)}` : "MISSING",
+        apiKeySid: API_KEY_SID ? `${API_KEY_SID.substring(0, 6)}...${API_KEY_SID.substring(API_KEY_SID.length - 4)}` : "MISSING",
+        hasAuthToken: !!AUTH_TOKEN,
+        hasApiSecret: !!API_KEY_SECRET,
+        hasTwilioPhone: !!TWILIO_PHONE,
+        hasGeminiKey: !!GEMINI_API_KEY,
+        formatCheck: {
+            accountSidValid: ACCOUNT_SID?.startsWith('AC'),
+            apiKeySidValid: API_KEY_SID?.startsWith('SK')
+        }
     });
-
-    const token = new AccessToken(
-        ACCOUNT_SID,  // FIXED: Use correct variable name
-        API_KEY_SID,
-        API_KEY_SECRET,
-        { identity: identity }
-    );
-
-    token.addGrant(voiceGrant);
-
-    res.json({ token: token.toJwt(), identity: identity });
 });
 
 // API 2: REJECT CALL (The Hack)
@@ -101,45 +171,37 @@ app.post("/api/reject-complaint", async (req, res) => {
             to: 'client:citizen', 
             from: TWILIO_PHONE
         });
-        console.log("WebRTC Call Initiated SID:", call.sid);
+        console.log("✅ WebRTC Call Initiated SID:", call.sid);
         
         const item = complaints.find(c => c.id === id);
         if (item) item.status = "Rejected";
 
-        res.json({ success: true });
+        res.json({ success: true, callSid: call.sid });
 
     } catch (error) {
-        console.error("Twilio Error:", error.message);
+        console.error("❌ Twilio Call Error:", error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// 📨 API 3: SMS
-// ==========================================
-// 🚀 API: HANDLE NEW COMPLAINTS (WEB & VAANI)
-// ==========================================
+// API 3: HANDLE NEW COMPLAINTS
 app.post("/api/new-complaint", express.json(), async (req, res) => {
     try {
         console.log("📥 Data Received (Web/Vaani):", req.body);
 
-        // 1. Get the data
         const newComplaint = req.body;
 
-        // 2. Validate & Sanitize (Important for Vaani/Web consistency)
+        // Validate & Sanitize
         if (!newComplaint.id) newComplaint.id = "SIGW-" + Math.floor(Math.random() * 1000);
         if (!newComplaint.status) newComplaint.status = "Pending";
         if (!newComplaint.date) newComplaint.date = new Date().toISOString().split('T')[0];
-        if (!newComplaint.lat) newComplaint.lat = "28.6139"; // Default Delhi
+        if (!newComplaint.lat) newComplaint.lat = "28.6139";
         if (!newComplaint.long) newComplaint.long = "77.2090";
 
-        // 3. Add to the Global Dashboard List (Top of the list)
         complaints.unshift(newComplaint);
 
-        // 4. Send SMS Confirmation (Twilio)
-        // This works for both Web forms AND Vaani voice-to-text data
+        // Send SMS Confirmation
         if (newComplaint.phone && newComplaint.phone.length > 9) {
-            
-            // Format number for Twilio (+91...)
             let recipient = newComplaint.phone.replace(/\s+/g, '').replace(/-/g, '');
             if (!recipient.startsWith('+')) recipient = '+91' + recipient;
 
@@ -157,7 +219,6 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
             }
         }
 
-        // 5. Success Response
         res.json({ success: true, id: newComplaint.id });
 
     } catch (error) {
@@ -166,28 +227,21 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
     }
 });
 
-// Photo Upload
-// ==========================================
-// 🛡️ API: PHOTO UPLOAD WITH AI VERIFICATION
-// ==========================================
+// API 4: PHOTO UPLOAD WITH AI VERIFICATION
 app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
-    // 1. Basic Validation
     if (!req.file) return res.json({ success: false, error: "No file uploaded" });
 
     const filePath = req.file.path;
     const fullImageUrl = `${PUBLIC_URL}/uploads/${req.file.filename}`;
     
-    // 2. Find the complaint
     const item = complaints.find(c => c.id === req.body.id);
     if(!item) return res.json({ success: false, error: "Complaint ID not found" });
 
     try {
         console.log(`🤖 AI Verifying Image for ${item.id}...`);
 
-        // 3. Setup AI Model
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        // 4. The Verification Prompt
         const prompt = `
             Analyze this image for a government grievance portal.
             Is this image related to civic issues like: Garbage, Potholes, Water leakage, Broken roads, Street lights, Sewer issues, or Construction debris?
@@ -197,35 +251,25 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
         `;
 
         const imagePart = fileToGenerativePart(filePath, req.file.mimetype);
-
-        // 5. Generate Result
         const result = await model.generateContent([prompt, imagePart]);
         const response = await result.response;
         const text = response.text().trim();
 
         console.log(`🤖 AI Verdict: ${text}`);
 
-        // 6. Handle AI Decision
         if (text.includes("VALID")) {
-            // ✅ Accepted
             item.img = fullImageUrl; 
             item.status = "Pending"; 
-            item.lat = req.body.lat; // Save GPS
-            item.long = req.body.long; // Save GPS
-            
+            item.lat = req.body.lat;
+            item.long = req.body.long;
             res.json({ success: true, url: fullImageUrl, spam: false });
         } else {
-            // 🚫 Rejected (Spam)
             console.log("❌ Blocked by AI: Invalid Image");
-            
-            // Do NOT update the complaint status or image
-            // We return 'spam: true' so frontend can show Red Alert
             res.json({ success: false, spam: true });
         }
 
     } catch (error) {
         console.error("AI Error:", error);
-        // Fallback: If AI fails (server error), allow the upload to be safe
         item.img = fullImageUrl;
         item.status = "Pending";
         res.json({ success: true, url: fullImageUrl, warning: "AI Check Skipped" });
@@ -234,7 +278,7 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
 
 app.get("/api/complaints", (req, res) => res.json(complaints));
 
-// 🕵️‍♂️ API 4:CLUSTER(The "Random Sample" Call)
+// API 5: CLUSTER AUDIT
 app.post("/api/audit-cluster", async (req, res) => {
     const { loc, dept, count } = req.body;
     
@@ -254,22 +298,19 @@ app.post("/api/audit-cluster", async (req, res) => {
                     </Say>
                 </Response>
             `,
-            to: 'client:citizen', // Rings the browser
+            to: 'client:citizen',
             from: TWILIO_PHONE
         });
-        console.log("Call Initiated SID:", call.sid);
-        res.json({ success: true });
+        console.log("✅ Call Initiated SID:", call.sid);
+        res.json({ success: true, callSid: call.sid });
 
     } catch (error) {
-        console.error("Twilio Error:", error.message);
+        console.error("❌ Twilio Error:", error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
-// ==========================================
-// 📧 AI EMAIL AGENT (IMAP LISTENER)
-// ==========================================
 
-// 1. CONFIGURATION (REPLACE WITH YOUR DETAILS)
+// EMAIL AGENT CONFIGURATION
 const EMAIL_USER = "jkkhandelwal010@gmail.com";
 const EMAIL_PASS = "came mnrd fbph bqkf";
 
@@ -284,13 +325,12 @@ const imapConfig = {
     }
 };
 
-// 2. THE AI EMAIL PROCESSOR
+// AI EMAIL PROCESSOR
 async function checkEmails() {
     try {
         const connection = await imap.connect(imapConfig);
         await connection.openBox('INBOX');
 
-        // Search for Unread Emails
         const searchCriteria = ['UNSEEN'];
         const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: true };
         const messages = await connection.search(searchCriteria, fetchOptions);
@@ -307,11 +347,9 @@ async function checkEmails() {
             const id = item.attributes.uid;
             const idHeader = "Imap-Id: "+id + "\r\n";
             
-            // Parse Email Body
             const mail = await simpleParser(idHeader + all.body);
             const emailBody = mail.text; 
 
-            // 🤖 USE GEMINI TO EXTRACT DATA
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
             const prompt = `
                 Analyze this email text and extract complaint details for a government portal.
@@ -333,13 +371,11 @@ async function checkEmails() {
 
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            // Clean up Markdown formatting if Gemini adds it
             let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
             
             try {
                 const data = JSON.parse(text);
                 
-                // REGISTER THE COMPLAINT
                 const newComplaint = {
                     id: "MAIL-" + Math.floor(1000 + Math.random() * 9000),
                     type: data.type,
@@ -354,11 +390,8 @@ async function checkEmails() {
                     long: "77.2090"
                 };
 
-                // Add to Global Array
                 complaints.unshift(newComplaint);
                 console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
-
-                // SEND SMS (Reuse logic)
                 sendEmailSMS(newComplaint);
 
             } catch (jsonErr) {
@@ -369,11 +402,11 @@ async function checkEmails() {
         connection.end();
 
     } catch (error) {
-        // console.error("IMAP Error (Ignore if just connection timeout):", error.message);
+        // Silently handle IMAP errors
     }
 }
 
-// 3. HELPER SMS FUNCTION
+// HELPER SMS FUNCTION
 async function sendEmailSMS(data) {
     if (!data.phone || data.phone.includes("00000")) return;
     
@@ -394,9 +427,14 @@ async function sendEmailSMS(data) {
     }
 }
 
-// 4. RUN CHECKER EVERY 30 SECONDS
+// RUN EMAIL CHECKER EVERY 30 SECONDS
 setInterval(checkEmails, 30000);
 console.log("📧 AI Email Agent Started...");
 
 // Start server
-app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`🚀 Backend running on port ${PORT}`);
+    console.log(`📍 Public URL: ${PUBLIC_URL}`);
+    console.log(`🔑 Twilio Account: ${ACCOUNT_SID.substring(0, 10)}...`);
+});
