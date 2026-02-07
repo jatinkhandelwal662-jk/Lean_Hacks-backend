@@ -518,7 +518,7 @@ async function checkEmails() {
                 console.log(`📨 Email subject: ${subject}`);
                 console.log(`📨 Email body preview: ${emailBody.substring(0, 100)}...`);
 
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
                 const prompt = `
                     Analyze this email text and extract complaint details for a government portal.
                     
@@ -650,3 +650,4 @@ app.listen(PORT, () => {
     console.log("========================================\n");
     console.log("✅ Server is ready and listening for requests");
 });
+
