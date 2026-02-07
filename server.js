@@ -31,7 +31,7 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 // SENDGRID CONFIGURATION
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 
-// EMAIL CONFIGURATION (Updated credentials)
+// EMAIL CONFIGURATION
 const EMAIL_USER = "grievancedelhicivic@gmail.com";
 const EMAIL_PASS = "qngl tpqu ppbd hmlt";
 const VERIFIED_SENDER = "grievancedelhicivic@gmail.com";
@@ -463,7 +463,7 @@ const imapConfig = {
     }
 };
 
-// EMAIL PROCESSOR WITH ENHANCED DEBUG LOGGING
+// FIXED: EMAIL PROCESSOR WITH ROBUST ERROR HANDLING
 async function checkEmails() {
     console.log("📧 Checking for new emails...");
     
@@ -490,16 +490,32 @@ async function checkEmails() {
 
         for (const item of messages) {
             try {
-                const all = item.parts.find(part => part.which === 'TEXT');
-                const id = item.attributes.uid;
+                // FIXED: Safe email parsing with null checks
+                const all = item.parts && item.parts.find(part => part.which === 'TEXT');
+                
+                if (!all || !all.body) {
+                    console.warn("⚠️  Email has no TEXT body, skipping");
+                    continue;
+                }
+                
+                const id = item.attributes && item.attributes.uid ? item.attributes.uid : Date.now();
                 const idHeader = "Imap-Id: "+id + "\r\n";
                 
                 const mail = await simpleParser(idHeader + all.body);
-                const emailBody = mail.text;
-                const senderEmail = mail.from.value[0].address;
+                
+                // FIXED: Safe extraction with fallbacks
+                const emailBody = mail.text || mail.html || "";
+                const senderEmail = (mail.from && mail.from.value && mail.from.value[0] && mail.from.value[0].address) 
+                    || "unknown@example.com";
+                const subject = mail.subject || "No Subject";
+                
+                if (!emailBody || emailBody.length < 10) {
+                    console.warn("⚠️  Email body too short or empty, skipping");
+                    continue;
+                }
                 
                 console.log(`📨 Processing email from: ${senderEmail}`);
-                console.log(`📨 Email subject: ${mail.subject}`);
+                console.log(`📨 Email subject: ${subject}`);
                 console.log(`📨 Email body preview: ${emailBody.substring(0, 100)}...`);
 
                 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -533,13 +549,13 @@ async function checkEmails() {
                 
                 const newComplaint = {
                     id: "SIG-" + Math.floor(1000 + Math.random() * 9000),
-                    type: data.type,
-                    loc: data.loc,
+                    type: data.type || "General Grievance",
+                    loc: data.loc || "Delhi",
                     status: "Pending",
                     date: new Date().toISOString().split('T')[0],
                     phone: data.phone !== "Not Provided" ? data.phone : "",
                     dept: "Auto-Assigned",
-                    desc: data.desc + ` (Via Email from: ${data.name})`,
+                    desc: (data.desc || "Email complaint") + ` (Via Email from: ${data.name || "Unknown"})`,
                     img: "",
                     lat: "28.6139", 
                     long: "77.2090",
@@ -551,12 +567,14 @@ async function checkEmails() {
                 console.log(`✅ Total complaints now: ${complaints.length}`);
                 
                 // SEND SENDGRID AUTO-REPLY EMAIL
-                console.log(`📧 Attempting to send auto-reply to ${senderEmail}...`);
-                const emailSent = await sendAutoReplyEmail(senderEmail, newComplaint);
-                if (emailSent) {
-                    console.log(`✅ Auto-reply sent successfully`);
-                } else {
-                    console.log(`⚠️  Auto-reply failed or skipped`);
+                if (senderEmail !== "unknown@example.com") {
+                    console.log(`📧 Attempting to send auto-reply to ${senderEmail}...`);
+                    const emailSent = await sendAutoReplyEmail(senderEmail, newComplaint);
+                    if (emailSent) {
+                        console.log(`✅ Auto-reply sent successfully`);
+                    } else {
+                        console.log(`⚠️  Auto-reply failed or skipped`);
+                    }
                 }
                 
                 // Also send SMS if phone available
@@ -569,7 +587,9 @@ async function checkEmails() {
 
             } catch (emailError) {
                 console.error("❌ Error processing individual email:", emailError.message);
-                console.error("Stack:", emailError.stack);
+                console.error("❌ Stack:", emailError.stack);
+                // Continue to next email instead of crashing
+                continue;
             }
         }
         
@@ -578,7 +598,7 @@ async function checkEmails() {
 
     } catch (error) {
         console.error("❌ IMAP Connection Error:", error.message);
-        console.error("❌ Error details:", error);
+        // Don't crash, just log and try again next cycle
     }
 }
 
