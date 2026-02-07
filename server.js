@@ -501,13 +501,28 @@ async function checkEmails() {
                 const id = item.attributes && item.attributes.uid ? item.attributes.uid : Date.now();
                 const idHeader = "Imap-Id: "+id + "\r\n";
                 
-                const mail = await simpleParser(idHeader + all.body);
+                // Parse the full email including headers
+                const header = item.parts && item.parts.find(part => part.which === 'HEADER');
+                const fullEmail = header ? header.body + "\r\n\r\n" + all.body : all.body;
                 
-                // FIXED: Safe extraction with fallbacks
+                const mail = await simpleParser(fullEmail);
+                
+                // FIXED: Safe extraction with fallbacks and better email parsing
                 const emailBody = mail.text || mail.html || "";
-                const senderEmail = (mail.from && mail.from.value && mail.from.value[0] && mail.from.value[0].address) 
-                    || "unknown@example.com";
+                
+                // Try multiple ways to extract sender email
+                let senderEmail = "unknown@example.com";
+                if (mail.from && mail.from.value && mail.from.value[0] && mail.from.value[0].address) {
+                    senderEmail = mail.from.value[0].address;
+                } else if (mail.from && mail.from.text) {
+                    // Try to extract from text format
+                    const emailMatch = mail.from.text.match(/[\w.-]+@[\w.-]+\.\w+/);
+                    if (emailMatch) senderEmail = emailMatch[0];
+                }
+                
                 const subject = mail.subject || "No Subject";
+                
+                console.log(`📧 Extracted sender: ${senderEmail}`);
                 
                 if (!emailBody || emailBody.length < 10) {
                     console.warn("⚠️  Email body too short or empty, skipping");
@@ -518,7 +533,7 @@ async function checkEmails() {
                 console.log(`📨 Email subject: ${subject}`);
                 console.log(`📨 Email body preview: ${emailBody.substring(0, 100)}...`);
 
-                const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 const prompt = `
                     Analyze this email text and extract complaint details for a government portal.
                     
@@ -567,14 +582,18 @@ async function checkEmails() {
                 console.log(`✅ Total complaints now: ${complaints.length}`);
                 
                 // SEND SENDGRID AUTO-REPLY EMAIL
-                if (senderEmail !== "unknown@example.com") {
+                console.log(`📧 Sender email extracted: ${senderEmail}`);
+                
+                if (senderEmail !== "unknown@example.com" && senderEmail.includes('@')) {
                     console.log(`📧 Attempting to send auto-reply to ${senderEmail}...`);
                     const emailSent = await sendAutoReplyEmail(senderEmail, newComplaint);
                     if (emailSent) {
-                        console.log(`✅ Auto-reply sent successfully`);
+                        console.log(`✅ Auto-reply sent successfully to ${senderEmail}`);
                     } else {
-                        console.log(`⚠️  Auto-reply failed or skipped`);
+                        console.log(`⚠️  Auto-reply failed to send to ${senderEmail}`);
                     }
+                } else {
+                    console.log(`⚠️  Cannot send auto-reply - invalid sender email: ${senderEmail}`);
                 }
                 
                 // Also send SMS if phone available
@@ -650,4 +669,3 @@ app.listen(PORT, () => {
     console.log("========================================\n");
     console.log("✅ Server is ready and listening for requests");
 });
-
