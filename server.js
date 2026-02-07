@@ -71,6 +71,92 @@ const upload = multer({ storage: multer.diskStorage({
     filename: (req, file, cb) => { cb(null, req.body.id + '-' + Date.now() + path.extname(file.originalname)); }
 })});
 
+// ==========================================
+// 🏛️ DEPARTMENT AUTO-ASSIGNMENT LOGIC
+// ==========================================
+
+/**
+ * Intelligently assign department based on complaint type and keywords
+ * @param {string} complaintType - The type/category of complaint
+ * @param {string} subject - Email subject (optional)
+ * @param {string} description - Complaint description (optional)
+ * @returns {string} - Assigned department name
+ */
+function assignDepartment(complaintType, subject = "", description = "") {
+    // Combine all text for keyword matching
+    const combinedText = `${complaintType} ${subject} ${description}`.toLowerCase();
+    
+    console.log(`🔍 Auto-assigning department based on: "${complaintType}"`);
+    
+    // BSES Rajdhani - Electricity/Power Issues
+    const powerKeywords = [
+        'power', 'electricity', 'no power', 'power cut', 'blackout',
+        'transformer', 'spark', 'electrical', 'voltage', 'wire',
+        'pole', 'meter', 'billing', 'outage', 'load shedding',
+        'short circuit', 'electric shock', 'bses', 'discom'
+    ];
+    
+    // MCD - Municipal Corporation of Delhi
+    const mcdKeywords = [
+        'garbage', 'waste', 'trash', 'dustbin', 'sanitation',
+        'manhole', 'open manhole', 'drain', 'sewer', 'sewage',
+        'dead animal', 'stray dog', 'mosquito', 'dengue',
+        'fogging', 'cleaning', 'sweeping', 'mcd', 'municipal'
+    ];
+    
+    // PWD - Public Works Department (Roads & Infrastructure)
+    const pwdKeywords = [
+        'pothole', 'road', 'broken road', 'damaged road', 'collapsed',
+        'pavement', 'footpath', 'street', 'highway', 'construction',
+        'bridge', 'flyover', 'infrastructure', 'pwd', 'crack'
+    ];
+    
+    // DJB - Delhi Jal Board (Water Supply)
+    const djbKeywords = [
+        'water', 'no water', 'dirty water', 'contaminated',
+        'pipeline', 'pipe burst', 'leakage', 'water supply',
+        'tanker', 'tap', 'drinking water', 'djb', 'jal board',
+        'water quality', 'sewage water'
+    ];
+    
+    // Street Light Department
+    const streetLightKeywords = [
+        'street light', 'street lamp', 'light not working',
+        'dark street', 'lighting', 'lamp post'
+    ];
+    
+    // Check keywords in order of priority
+    if (powerKeywords.some(keyword => combinedText.includes(keyword))) {
+        console.log("✅ Department assigned: BSES Rajdhani (Electricity)");
+        return "BSES Rajdhani";
+    }
+    
+    if (mcdKeywords.some(keyword => combinedText.includes(keyword))) {
+        console.log("✅ Department assigned: MCD (Municipal)");
+        return "MCD";
+    }
+    
+    if (pwdKeywords.some(keyword => combinedText.includes(keyword))) {
+        console.log("✅ Department assigned: PWD (Roads)");
+        return "PWD";
+    }
+    
+    if (djbKeywords.some(keyword => combinedText.includes(keyword))) {
+        console.log("✅ Department assigned: DJB (Water)");
+        return "DJB";
+    }
+    
+    
+    if (streetLightKeywords.some(keyword => combinedText.includes(keyword))) {
+        console.log("✅ Department assigned: Street Light Dept");
+        return "BSES Rajdhani";
+    }
+    
+    // Default fallback
+    console.log("⚠️  No specific keywords matched, assigning to General Admin");
+    return "General Admin";
+}
+
 // HELPER FUNCTION
 function fileToGenerativePart(path, mimeType) {
   return {
@@ -114,6 +200,7 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
         .button:hover { background: #764ba2; }
         .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
         .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+        .dept-badge { display: inline-block; background: #28a745; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -139,6 +226,9 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
                     <span class="label">Type:</span> ${complaintData.type || 'General Grievance'}
                 </div>
                 <div class="info-row">
+                    <span class="label">Assigned Department:</span> <span class="dept-badge">${complaintData.dept}</span>
+                </div>
+                <div class="info-row">
                     <span class="label">Location:</span> ${complaintData.loc || 'Delhi'}
                 </div>
                 <div class="info-row">
@@ -161,7 +251,7 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
             <p style="font-size: 14px; color: #666; margin-top: 20px;">
                 <strong>What happens next?</strong><br>
                 1. Our AI system will verify your uploaded evidence<br>
-                2. Your complaint will be assigned to the relevant department<br>
+                2. Your complaint will be processed by <strong>${complaintData.dept}</strong><br>
                 3. You will receive updates via email and SMS<br>
                 4. The department will work to resolve your issue
             </p>
@@ -196,6 +286,7 @@ Your complaint has been successfully registered!
 Complaint Details:
 - ID: ${complaintData.id}
 - Type: ${complaintData.type || 'General Grievance'}
+- Assigned Department: ${complaintData.dept}
 - Location: ${complaintData.loc || 'Delhi'}
 - Status: Pending Review
 - Date: ${complaintData.date}
@@ -205,7 +296,7 @@ ${uploadLink}
 
 What happens next?
 1. Our AI system will verify your uploaded evidence
-2. Your complaint will be assigned to the relevant department
+2. Your complaint will be processed by ${complaintData.dept}
 3. You will receive updates via email and SMS
 4. The department will work to resolve your issue
 
@@ -282,7 +373,7 @@ app.post("/api/reject-complaint", async (req, res) => {
     }
 });
 
-// API 3: NEW COMPLAINT
+// API 3: NEW COMPLAINT (Updated with department assignment)
 app.post("/api/new-complaint", express.json(), async (req, res) => {
     try {
         console.log("📥 Data Received (Web/Vaani/Email):", req.body);
@@ -295,6 +386,15 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
         if (!newComplaint.date) newComplaint.date = new Date().toISOString().split('T')[0];
         if (!newComplaint.lat) newComplaint.lat = "28.6139";
         if (!newComplaint.long) newComplaint.long = "77.2090";
+        
+        // 🆕 AUTO-ASSIGN DEPARTMENT if not already assigned
+        if (!newComplaint.dept || newComplaint.dept === "Auto-Assigned") {
+            newComplaint.dept = assignDepartment(
+                newComplaint.type || "",
+                newComplaint.subject || "",
+                newComplaint.desc || ""
+            );
+        }
 
         // Add to Dashboard
         complaints.unshift(newComplaint);
@@ -309,7 +409,7 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
             
             try {
                 await client.messages.create({
-                    body: `दिल्ली सुदर्शन\nComplaint Registered!\nID: ${newComplaint.id}\nCategory: ${newComplaint.type}\n\nUpload Evidence:\n${uploadLink}`,
+                    body: `दिल्ली सुदर्शन\nComplaint Registered!\nID: ${newComplaint.id}\nCategory: ${newComplaint.type}\nDept: ${newComplaint.dept}\n\nUpload Evidence:\n${uploadLink}`,
                     from: TWILIO_PHONE,
                     to: recipient
                 });
@@ -463,7 +563,7 @@ const imapConfig = {
     }
 };
 
-// FIXED: EMAIL PROCESSOR WITH ROBUST ERROR HANDLING
+// ENHANCED EMAIL PROCESSOR WITH DEPARTMENT AUTO-ASSIGNMENT
 async function checkEmails() {
     console.log("📧 Checking for new emails...");
     
@@ -534,22 +634,26 @@ async function checkEmails() {
                 console.log(`📨 Email body preview: ${emailBody.substring(0, 100)}...`);
 
                 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                
+                // 🆕 ENHANCED PROMPT - Include subject for better type extraction
                 const prompt = `
-                    Analyze this email text and extract complaint details for a government portal.
+                    Analyze this email and extract complaint details for a government grievance portal.
                     
-                    EMAIL TEXT: "${emailBody}"
+                    EMAIL SUBJECT: "${subject}"
+                    EMAIL BODY: "${emailBody}"
                     
                     Task: Extract these fields into JSON: 
                     - name (Citizen Name)
                     - phone (Mobile Number, if not found use "Not Provided")
-                    - type (Complaint Type e.g., Pothole, Garbage, Street Light)
-                    - loc (Location)
-                    - desc (Description)
+                    - type (Complaint Type - be specific based on subject/body. Examples: "Power Outage", "Broken Road", "No Water Supply", "Garbage Not Collected", "Open Manhole", "Dead Animal")
+                    - loc (Location mentioned in email, or "Delhi" if not specified)
+                    - desc (Brief description of the issue)
                     
-                    Rules:
-                    - If phone is missing, use "Not Provided".
-                    - If type is unclear, categorize it as "General Grievance".
-                    - Return ONLY valid JSON. No Markdown.
+                    IMPORTANT RULES:
+                    - Use the EMAIL SUBJECT to determine the complaint type when possible
+                    - Be specific with type classification
+                    - If phone is missing, use "Not Provided"
+                    - Return ONLY valid JSON with no markdown formatting
                 `;
 
                 console.log("🤖 Sending to Gemini AI for extraction...");
@@ -562,6 +666,13 @@ async function checkEmails() {
                 const data = JSON.parse(text);
                 console.log("✅ JSON parsed successfully:", data);
                 
+                // 🆕 AUTO-ASSIGN DEPARTMENT based on extracted type and subject
+                const assignedDept = assignDepartment(
+                    data.type || "",
+                    subject,
+                    data.desc || ""
+                );
+                
                 const newComplaint = {
                     id: "SIG-" + Math.floor(1000 + Math.random() * 9000),
                     type: data.type || "General Grievance",
@@ -569,16 +680,18 @@ async function checkEmails() {
                     status: "Pending",
                     date: new Date().toISOString().split('T')[0],
                     phone: data.phone !== "Not Provided" ? data.phone : "",
-                    dept: "Auto-Assigned",
+                    dept: assignedDept,  // 🆕 AUTO-ASSIGNED DEPARTMENT
                     desc: (data.desc || "Email complaint") + ` (Via Email from: ${data.name || "Unknown"})`,
                     img: "",
                     lat: "28.6139", 
                     long: "77.2090",
-                    email: senderEmail
+                    email: senderEmail,
+                    subject: subject  // Store subject for reference
                 };
 
                 complaints.unshift(newComplaint);
                 console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
+                console.log(`🏛️  Assigned to Department: ${assignedDept}`);
                 console.log(`✅ Total complaints now: ${complaints.length}`);
                 
                 // SEND SENDGRID AUTO-REPLY EMAIL
@@ -632,7 +745,7 @@ async function sendComplaintSMS(data) {
 
     try {
         await client.messages.create({
-            body: `दिल्ली सुदर्शन\nEmail Complaint Registered!\nID: ${data.id}\nStatus: Pending\n\nUpload Evidence:\n${uploadLink}`,
+            body: `दिल्ली सुदर्शन\nEmail Complaint Registered!\nID: ${data.id}\nDept: ${data.dept}\nStatus: Pending\n\nUpload Evidence:\n${uploadLink}`,
             from: TWILIO_PHONE,
             to: recipient
         });
@@ -668,6 +781,9 @@ app.listen(PORT, () => {
     
     console.log("========================================\n");
     console.log("✅ Server is ready and listening for requests");
+    console.log("🏛️  Department Auto-Assignment: ENABLED");
+    console.log("   - BSES Rajdhani: Power/Electricity issues");
+    console.log("   - MCD: Garbage/Manhole/Dead Animals");
+    console.log("   - PWD: Roads/Potholes/Infrastructure");
+    console.log("   - DJB: Water Supply/Pipeline issues");
 });
-
-
