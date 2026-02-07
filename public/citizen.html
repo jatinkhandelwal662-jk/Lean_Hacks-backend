@@ -35,7 +35,7 @@
 
         /* Glass Panel */
         .glass-panel {
-            background: rgba(15, 23, 42, 0.4);
+            background: rgba(15, 23, 42, 0.6); /* Slightly Darker for Contrast */
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -55,40 +55,39 @@
         }
         .floating-orb:active { transform: scale(0.95); }
 
-        /* Status Dot Pulse */
-        .status-dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7);
-            animation: pulse-cyan 2s infinite;
+        /* Keypad Styles */
+        .keypad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
         }
-        @keyframes pulse-cyan {
-            0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(34, 211, 238, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
+        .key-btn {
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.2s;
         }
-
-        /* Incoming Call Pulse */
-        .incoming-ring {
-            animation: ring-pulse 1.5s infinite;
-        }
-        @keyframes ring-pulse {
-            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
-            70% { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        .key-btn:active {
+            background: rgba(34, 211, 238, 0.3);
+            transform: scale(0.9);
         }
 
         .hidden { display: none !important; }
         .visible { display: flex !important; }
-        
-        /* Audio Wave */
-        .bar { width: 6px; background: var(--accent-cyan); border-radius: 4px; animation: sound 0s -0.4s ease-in-out infinite alternate; }
-        .active-wave .bar { animation-duration: 0.4s; }
-        @keyframes sound { 0% { height: 10px; opacity: .5; } 100% { height: 40px; opacity: 1; } }
     </style>
 </head>
 <body class="bg-neural h-screen w-full flex items-center justify-center p-4">
 
-    <div class="glass-panel w-full max-w-md rounded-3xl p-8 relative overflow-hidden flex flex-col items-center justify-center min-h-[500px]">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[600px]">
         
         <div class="absolute top-6 left-0 w-full flex justify-center opacity-70">
             <div class="flex items-center gap-2">
@@ -102,10 +101,7 @@
                 <button id="btnInit" class="floating-orb w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl z-10 relative">
                     <i class="ri-power-line"></i>
                 </button>
-                <div class="absolute inset-0 rounded-full border border-indigo-500/30 scale-125 group-hover:scale-150 transition-transform duration-500"></div>
-                <div class="absolute inset-0 rounded-full border border-indigo-500/20 scale-150 group-hover:scale-175 transition-transform duration-700"></div>
             </div>
-            
             <h2 class="text-2xl font-bold mb-2">Initialize Link</h2>
             <p id="activate-status" class="text-slate-400 text-sm mono text-center max-w-[200px]">
                 Establish secure voice channel with Govt Officer.
@@ -117,9 +113,8 @@
                 <div class="absolute inset-0 rounded-full border border-t-cyan-500 border-r-transparent border-b-transparent border-l-transparent animate-spin duration-[3s]"></div>
                 <i class="ri-radar-line text-4xl text-cyan-400"></i>
             </div>
-            
             <div class="flex items-center gap-3 bg-cyan-500/10 px-4 py-2 rounded-full border border-cyan-500/20 mb-4">
-                <div class="status-dot bg-cyan-400"></div>
+                <div class="status-dot bg-cyan-400" style="width: 8px; height: 8px; border-radius: 50%;"></div>
                 <span class="text-cyan-300 text-sm mono font-medium">SYSTEM ONLINE</span>
             </div>
             <p class="text-slate-500 text-xs mono uppercase tracking-widest">Waiting for incoming transmission...</p>
@@ -127,39 +122,44 @@
 
         <div id="screen-incoming" class="w-full flex-col items-center hidden">
             <div class="mb-8 relative">
-                <div class="w-28 h-28 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-3xl incoming-ring">
+                <div class="w-28 h-28 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-3xl animate-pulse">
                     <i class="ri-government-fill"></i>
                 </div>
             </div>
-            
             <div class="text-center mb-10">
                 <h3 class="text-2xl font-bold text-white mb-1">Incoming Call</h3>
                 <p class="text-indigo-300 mono text-sm">SECURE LINE • OFFICER VAANI</p>
             </div>
-
             <div class="flex items-center gap-6 w-full px-4">
-                <button id="btnReject" class="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 py-4 rounded-2xl flex items-center justify-center gap-2 transition-all">
+                <button id="btnReject" class="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 py-4 rounded-2xl flex items-center justify-center gap-2">
                     <i class="ri-close-line text-xl"></i> <span class="mono text-xs font-bold">DECLINE</span>
                 </button>
-                <button id="btnAccept" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all">
+                <button id="btnAccept" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.4)]">
                     <i class="ri-phone-fill text-xl"></i> <span class="mono text-xs font-bold">ACCEPT</span>
                 </button>
             </div>
         </div>
 
         <div id="screen-incall" class="w-full flex-col items-center hidden">
-            <div class="flex flex-col items-center mb-10">
+            <div class="flex flex-col items-center mb-6">
                 <span class="text-emerald-400 mono text-xs mb-2 tracking-widest">● LIVE CONNECTION</span>
-                <h1 class="text-3xl font-bold text-white">Officer Vaani</h1>
+                <h1 class="text-2xl font-bold text-white">Officer Vaani</h1>
                 <span id="call-timer" class="text-slate-400 mono text-sm mt-1">00:00</span>
             </div>
 
-            <div class="h-16 flex items-center justify-center gap-1 active-wave mb-12">
-                <div class="bar" style="animation-delay: -0.2s"></div>
-                <div class="bar" style="animation-delay: -0.4s"></div>
-                <div class="bar" style="animation-delay: -0.6s"></div>
-                <div class="bar" style="animation-delay: -0.8s"></div>
-                <div class="bar" style="animation-delay: -1.0s"></div>
+            <div class="keypad-grid">
+                <button class="key-btn" onclick="sendDTMF('1')">1</button>
+                <button class="key-btn" onclick="sendDTMF('2')">2</button>
+                <button class="key-btn" onclick="sendDTMF('3')">3</button>
+                <button class="key-btn" onclick="sendDTMF('4')">4</button>
+                <button class="key-btn" onclick="sendDTMF('5')">5</button>
+                <button class="key-btn" onclick="sendDTMF('6')">6</button>
+                <button class="key-btn" onclick="sendDTMF('7')">7</button>
+                <button class="key-btn" onclick="sendDTMF('8')">8</button>
+                <button class="key-btn" onclick="sendDTMF('9')">9</button>
+                <button class="key-btn" onclick="sendDTMF('*')">*</button>
+                <button class="key-btn" onclick="sendDTMF('0')">0</button>
+                <button class="key-btn" onclick="sendDTMF('#')">#</button>
             </div>
 
             <button id="btnEnd" class="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 text-white text-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-110">
@@ -175,6 +175,7 @@
 
     <script>
         let device;
+        let activeConnection = null; // Store active connection for DTMF
         let timerInterval;
         let seconds = 0;
 
@@ -209,6 +210,14 @@
             clearInterval(timerInterval);
         }
 
+        // --- DTMF FUNCTION ---
+        function sendDTMF(digit) {
+            if (activeConnection) {
+                console.log("Sending DTMF:", digit);
+                activeConnection.sendDigits(digit);
+            }
+        }
+
         // --- INIT LOGIC ---
         document.getElementById('btnInit').addEventListener('click', async () => {
             const status = document.getElementById('activate-status');
@@ -222,12 +231,10 @@
             status.innerHTML = "<span class='text-indigo-400 animate-pulse'>Establishing Uplink...</span>";
 
             try {
-                // 1. Get Token
                 const response = await fetch('/api/token');
                 if (!response.ok) throw new Error("Backend Offline");
                 const data = await response.json();
 
-                // 2. Setup Device
                 device = new Twilio.Device(data.token, {
                     codecPreferences: ['opus', 'pcmu'],
                     fakeLocalDTMF: true,
@@ -245,8 +252,9 @@
                     status.innerHTML = `<span class='text-red-400'>Error: ${err.message}</span>`;
                 });
 
-                // 3. Incoming Call
+                // Incoming Call Handling
                 device.on('incoming', (conn) => {
+                    activeConnection = conn; // Save connection for DTMF
                     showScreen('incoming');
 
                     document.getElementById('btnAccept').onclick = () => {
@@ -257,6 +265,7 @@
 
                     document.getElementById('btnReject').onclick = () => {
                         conn.reject();
+                        activeConnection = null;
                         showScreen('idle');
                     };
 
@@ -266,6 +275,7 @@
 
                     conn.on('disconnect', () => {
                         stopTimer();
+                        activeConnection = null;
                         showScreen('idle');
                     });
                 });
