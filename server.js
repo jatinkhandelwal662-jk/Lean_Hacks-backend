@@ -29,23 +29,27 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // SENDGRID CONFIGURATION
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY; // Add this to your .env file
-sgMail.setApiKey(SENDGRID_API_KEY);
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 
 // EMAIL CONFIGURATION (Updated credentials)
 const EMAIL_USER = "grievancedelhicivic@gmail.com";
 const EMAIL_PASS = "qngl tpqu ppbd hmlt";
-const VERIFIED_SENDER = "grievancedelhicivic@gmail.com"; // Must match SendGrid verified sender
+const VERIFIED_SENDER = "grievancedelhicivic@gmail.com";
+
+// Initialize SendGrid only if API key exists
+if (SENDGRID_API_KEY) {
+    sgMail.setApiKey(SENDGRID_API_KEY);
+    console.log("✅ SendGrid API Key configured");
+} else {
+    console.warn("⚠️  WARNING: SENDGRID_API_KEY not found in environment variables");
+    console.warn("⚠️  Email auto-replies will be disabled");
+}
 
 // SAFETY CHECK
 if (!ACCOUNT_SID || !API_KEY_SID) {
     console.error("CRITICAL ERROR: .env file is missing or empty!");
     console.error("Please create a .env file with your Twilio keys.");
     process.exit(1);
-}
-
-if (!SENDGRID_API_KEY) {
-    console.warn("⚠️  WARNING: SENDGRID_API_KEY not found. Email auto-replies will be disabled.");
 }
 
 const client = twilio(ACCOUNT_SID, AUTH_TOKEN);
@@ -77,7 +81,7 @@ function fileToGenerativePart(path, mimeType) {
   };
 }
 
-// NEW: SENDGRID EMAIL AUTO-REPLY FUNCTION
+// SENDGRID EMAIL AUTO-REPLY FUNCTION
 async function sendAutoReplyEmail(recipientEmail, complaintData) {
     if (!SENDGRID_API_KEY) {
         console.log("⚠️  SendGrid not configured, skipping email auto-reply");
@@ -214,13 +218,13 @@ This is an automated message.
 
     try {
         await sgMail.send(msg);
-        console.log(`📧 SendGrid: Auto-reply email sent to ${recipientEmail}`);
+        console.log(`📧 ✅ SendGrid: Auto-reply email sent to ${recipientEmail}`);
         return true;
     } catch (error) {
-        console.error(`❌ SendGrid Error:`, error.message);
+        console.error(`❌ SendGrid Error sending to ${recipientEmail}:`, error.message);
         if (error.response) {
-            console.error(`   Status: ${error.response.statusCode}`);
-            console.error(`   Body:`, error.response.body);
+            console.error(`   Status Code: ${error.response.statusCode}`);
+            console.error(`   Error Body:`, JSON.stringify(error.response.body, null, 2));
         }
         return false;
     }
@@ -294,6 +298,7 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
 
         // Add to Dashboard
         complaints.unshift(newComplaint);
+        console.log(`✅ Complaint added to dashboard. Total complaints: ${complaints.length}`);
 
         // Send SMS Confirmation
         if (newComplaint.phone && newComplaint.phone.length > 9 && newComplaint.phone !== "Not Provided") {
@@ -371,7 +376,11 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
     }
 });
 
-app.get("/api/new-complaint", (req, res) => res.json(complaints));
+// GET complaints endpoint
+app.get("/api/new-complaint", (req, res) => {
+    console.log(`📊 Dashboard requesting complaints. Current count: ${complaints.length}`);
+    res.json(complaints);
+});
 
 // API 4: CITIZEN ASSURANCE CALL
 app.post("/api/audit-cluster", async (req, res) => {
@@ -449,63 +458,78 @@ const imapConfig = {
         host: 'imap.gmail.com',
         port: 993,
         tls: true,
-        authTimeout: 3000
+        authTimeout: 10000,
+        tlsOptions: { rejectUnauthorized: false }
     }
 };
 
-// EMAIL PROCESSOR WITH SENDGRID AUTO-REPLY
+// EMAIL PROCESSOR WITH ENHANCED DEBUG LOGGING
 async function checkEmails() {
+    console.log("📧 Checking for new emails...");
+    
     try {
+        console.log("📧 Connecting to Gmail IMAP...");
         const connection = await imap.connect(imapConfig);
+        console.log("✅ IMAP Connected successfully");
+        
         await connection.openBox('INBOX');
+        console.log("✅ INBOX opened");
 
         const searchCriteria = ['UNSEEN'];
         const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: true };
         const messages = await connection.search(searchCriteria, fetchOptions);
+
+        console.log(`📧 Found ${messages.length} unread emails`);
 
         if (messages.length === 0) {
             connection.end();
             return;
         }
 
-        console.log(`📧 Found ${messages.length} new emails! AI Processing...`);
+        console.log(`📧 Processing ${messages.length} new emails...`);
 
         for (const item of messages) {
-            const all = item.parts.find(part => part.which === 'TEXT');
-            const id = item.attributes.uid;
-            const idHeader = "Imap-Id: "+id + "\r\n";
-            
-            const mail = await simpleParser(idHeader + all.body);
-            const emailBody = mail.text;
-            const senderEmail = mail.from.value[0].address;
-            
-            console.log(`📨 Processing email from: ${senderEmail}`);
-
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const prompt = `
-                Analyze this email text and extract complaint details for a government portal.
-                
-                EMAIL TEXT: "${emailBody}"
-                
-                Task: Extract these fields into JSON: 
-                - name (Citizen Name)
-                - phone (Mobile Number, if not found use "Not Provided")
-                - type (Complaint Type e.g., Pothole, Garbage, Street Light)
-                - loc (Location)
-                - desc (Description)
-                
-                Rules:
-                - If phone is missing, use "Not Provided".
-                - If type is unclear, categorize it as "General Grievance".
-                - Return ONLY valid JSON. No Markdown.
-            `;
-
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            
             try {
+                const all = item.parts.find(part => part.which === 'TEXT');
+                const id = item.attributes.uid;
+                const idHeader = "Imap-Id: "+id + "\r\n";
+                
+                const mail = await simpleParser(idHeader + all.body);
+                const emailBody = mail.text;
+                const senderEmail = mail.from.value[0].address;
+                
+                console.log(`📨 Processing email from: ${senderEmail}`);
+                console.log(`📨 Email subject: ${mail.subject}`);
+                console.log(`📨 Email body preview: ${emailBody.substring(0, 100)}...`);
+
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const prompt = `
+                    Analyze this email text and extract complaint details for a government portal.
+                    
+                    EMAIL TEXT: "${emailBody}"
+                    
+                    Task: Extract these fields into JSON: 
+                    - name (Citizen Name)
+                    - phone (Mobile Number, if not found use "Not Provided")
+                    - type (Complaint Type e.g., Pothole, Garbage, Street Light)
+                    - loc (Location)
+                    - desc (Description)
+                    
+                    Rules:
+                    - If phone is missing, use "Not Provided".
+                    - If type is unclear, categorize it as "General Grievance".
+                    - Return ONLY valid JSON. No Markdown.
+                `;
+
+                console.log("🤖 Sending to Gemini AI for extraction...");
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+                
+                console.log("🤖 AI Response:", text);
+                
                 const data = JSON.parse(text);
+                console.log("✅ JSON parsed successfully:", data);
                 
                 const newComplaint = {
                     id: "SIG-" + Math.floor(1000 + Math.random() * 9000),
@@ -524,24 +548,37 @@ async function checkEmails() {
 
                 complaints.unshift(newComplaint);
                 console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
+                console.log(`✅ Total complaints now: ${complaints.length}`);
                 
-                // 🆕 SEND SENDGRID AUTO-REPLY EMAIL
-                await sendAutoReplyEmail(senderEmail, newComplaint);
+                // SEND SENDGRID AUTO-REPLY EMAIL
+                console.log(`📧 Attempting to send auto-reply to ${senderEmail}...`);
+                const emailSent = await sendAutoReplyEmail(senderEmail, newComplaint);
+                if (emailSent) {
+                    console.log(`✅ Auto-reply sent successfully`);
+                } else {
+                    console.log(`⚠️  Auto-reply failed or skipped`);
+                }
                 
                 // Also send SMS if phone available
                 if (data.phone && data.phone !== "Not Provided" && data.phone.length > 9) {
+                    console.log(`📱 Sending SMS to ${data.phone}...`);
                     await sendComplaintSMS(newComplaint);
+                } else {
+                    console.log(`ℹ️  No valid phone number, SMS skipped`);
                 }
 
-            } catch (jsonErr) {
-                console.error("❌ AI Parsing Failed:", text);
+            } catch (emailError) {
+                console.error("❌ Error processing individual email:", emailError.message);
+                console.error("Stack:", emailError.stack);
             }
         }
         
         connection.end();
+        console.log("✅ Email check completed");
 
     } catch (error) {
-        // Silently handle connection errors
+        console.error("❌ IMAP Connection Error:", error.message);
+        console.error("❌ Error details:", error);
     }
 }
 
@@ -562,25 +599,34 @@ async function sendComplaintSMS(data) {
         });
         console.log(`📩 SMS Sent to ${recipient}`);
     } catch (err) {
-        console.error("SMS Failed:", err.message);
+        console.error("❌ SMS Failed:", err.message);
     }
 }
 
 // RUN EMAIL CHECKER EVERY 30 SECONDS
-setInterval(checkEmails, 30000);
-console.log("📧 AI Email Agent Started with SendGrid Auto-Reply...");
+const emailCheckInterval = setInterval(checkEmails, 30000);
+console.log("📧 Email checker scheduled - runs every 30 seconds");
 
-// Verify SendGrid on startup
-if (SENDGRID_API_KEY) {
-    console.log("✅ SendGrid configured and ready");
-} else {
-    console.warn("⚠️  SendGrid not configured - email auto-replies disabled");
-}
+// Also run once immediately on startup
+setTimeout(() => {
+    console.log("📧 Running initial email check...");
+    checkEmails();
+}, 5000); // Wait 5 seconds after startup
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
+    console.log("\n========================================");
     console.log(`🚀 Backend running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
     console.log(`📧 Email: ${EMAIL_USER}`);
-    console.log(`✅ Server is ready`);
+    console.log(`📊 Complaints in memory: ${complaints.length}`);
+    
+    if (SENDGRID_API_KEY) {
+        console.log(`✅ SendGrid configured`);
+    } else {
+        console.log(`⚠️  SendGrid NOT configured - set SENDGRID_API_KEY env variable`);
+    }
+    
+    console.log("========================================\n");
+    console.log("✅ Server is ready and listening for requests");
 });
