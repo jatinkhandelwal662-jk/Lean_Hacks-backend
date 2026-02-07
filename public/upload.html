@@ -45,7 +45,7 @@
 
     <div class="container">
         <h2>📸 Live Evidence Cam</h2>
-        <p>Verifying for <b id="cid" style="color:#fff;">Complaint #...</b></p>
+        <p>Verifying for <b id="cid" style="color:#fff;">...</b></p>
 
         <div class="camera-box">
             <video id="video" autoplay playsinline></video>
@@ -76,17 +76,17 @@
         let userLat = null; // Store Latitude
         let userLong = null; // Store Longitude
 
-        // 1. Get Complaint ID from URL
+        // 1. Get Complaint ID from URL (Fallback to Demo ID if testing directly)
         const params = new URLSearchParams(window.location.search);
-        const id = params.get("id");
-        document.getElementById("cid").innerText = id ? id : "Unknown ID";
+        const id = params.get("id") || "SIG-7421"; 
+        document.getElementById("cid").innerText = id;
 
         // 2. START CAMERA & GPS
         async function startCamera() {
             try {
                 // Camera Access
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" }, // Prefer back camera
+                    video: { facingMode: "environment" }, 
                     audio: false 
                 });
                 video.srcObject = stream;
@@ -100,7 +100,7 @@
                             document.getElementById('status').innerHTML = `<span style="color:#4ade80"><i class="ri-gps-fill"></i> GPS Locked: ${userLat}, ${userLong}</span>`;
                         },
                         (error) => {
-                            document.getElementById('status').innerHTML = `<span style="color:#facc15"><i class="ri-alert-fill"></i> GPS Denied. Using Default Loc.</span>`;
+                            document.getElementById('status').innerHTML = `<span style="color:#facc15"><i class="ri-alert-fill"></i> GPS Denied. Using Default.</span>`;
                         }
                     );
                 }
@@ -140,7 +140,7 @@
             submitBtn.style.display = 'none';
         });
 
-        // 5. SUBMIT TO BACKEND
+        // 5. SUBMIT TO RENDER BACKEND
         submitBtn.addEventListener('click', async () => {
             if (!currentBlob || !id) return;
 
@@ -148,27 +148,56 @@
             formData.append("photo", currentBlob, "capture.jpg"); 
             formData.append("id", id);
             
-            // Send GPS Coordinates (Default to Delhi if missing)
+            // Send GPS Coordinates
             formData.append("lat", userLat || "28.6139"); 
             formData.append("long", userLong || "77.2090");
 
-            document.getElementById("status").innerText = "Uploading Evidence...";
+            document.getElementById("status").innerHTML = `<span style="color:#38bdf8"><i class="ri-loader-2-line ri-spin"></i> AI Scanning Evidence...</span>`;
             submitBtn.disabled = true;
             submitBtn.style.opacity = "0.7";
 
             try {
-                const res = await fetch("/api/upload-photo", { method: "POST", body: formData });
+                // 👇 UPDATED: Points to your Live Render Backend
+                const res = await fetch("https://lean-hacks-backend.onrender.com/api/upload-photo", { 
+                    method: "POST", 
+                    body: formData 
+                });
+                
                 const result = await res.json();
 
-                if (result.success) {
+                // --- 🤖 AI VERDICT LOGIC ---
+                if (result.spam) {
+                    // 🔴 CASE 1: SPAM DETECTED (Laptop/Selfie/Random)
                     document.body.innerHTML = `
-                        <div class="container" style="padding:40px;">
-                            <h1 style="font-size:4rem; margin-bottom:10px;">✅</h1>
-                            <h2 style="color:#4ade80">Evidence Secured!</h2>
-                            <p style="margin-top:20px; font-family:monospace;">
-                                GeoTag: ${userLat || 'N/A'}, ${userLong || 'N/A'}
+                        <div class="container" style="padding:40px; border: 2px solid #ef4444;">
+                            <h1 style="font-size:4rem; margin-bottom:10px;">🚫</h1>
+                            <h2 style="color:#ef4444">Upload Rejected</h2>
+                            <p style="font-size:1.1rem; color: #fff;">
+                                🤖 AI System: <b>Invalid Image Detected</b>
                             </p>
-                            <p style="color:#94a3b8; font-size:0.8rem;">You can close this window now.</p>
+                            <p style="color:#94a3b8; font-size:0.9rem; margin-top:10px;">
+                                Please upload a real photo of the issue (Garbage, Pothole, etc).<br>
+                                Selfies or screens are not accepted.
+                            </p>
+                            <button onclick="location.reload()" style="margin-top:20px; padding:12px 24px; background:#334155; color:white; border:none; border-radius:50px; cursor:pointer; font-weight:bold;">
+                                <i class="ri-refresh-line"></i> Try Again
+                            </button>
+                        </div>
+                    `;
+                } 
+                else if (result.success) {
+                    // CASE 2: SUCCESS (Valid Complaint)
+                    document.body.innerHTML = `
+                        <div class="container" style="padding:40px; border: 2px solid #22c55e;">
+                            <h1 style="font-size:4rem; margin-bottom:10px;">✅</h1>
+                            <h2 style="color:#4ade80">Evidence Verified!</h2>
+                            <p style="color:#cbd5e1;">AI Scan: <b style="color:#4ade80">Valid Complaint</b></p>
+                            <div style="background:#0f172a; padding:10px; border-radius:10px; margin-top:20px; border:1px solid #334155;">
+                                <p style="font-family:monospace; margin:0; color:#38bdf8;">
+                                    📍 GeoTag: ${userLat || 'N/A'}, ${userLong || 'N/A'}
+                                </p>
+                            </div>
+                            <p style="color:#94a3b8; font-size:0.8rem; margin-top:15px;">You can close this window now.</p>
                         </div>
                     `;
                 } else {
@@ -177,7 +206,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById("status").innerText = "Server Error";
+                document.getElementById("status").innerText = "Server Error. Check connection.";
                 submitBtn.disabled = false;
             }
         });
