@@ -448,9 +448,8 @@ app.get("/api/check-audit-status/:sid", (req, res) => {
 });
 
 // ==========================================
-// 📧 AI EMAIL AGENT WITH SENDGRID AUTO-REPLY
+// 📧 AI EMAIL AGENT (FIXED HEADER PARSING)
 // ==========================================
-
 const imapConfig = {
     imap: {
         user: EMAIL_USER,
@@ -463,161 +462,95 @@ const imapConfig = {
     }
 };
 
-// FIXED: EMAIL PROCESSOR WITH ROBUST ERROR HANDLING
 async function checkEmails() {
-    console.log("📧 Checking for new emails...");
-    
     try {
-        console.log("📧 Connecting to Gmail IMAP...");
         const connection = await imap.connect(imapConfig);
-        console.log("✅ IMAP Connected successfully");
-        
         await connection.openBox('INBOX');
-        console.log("✅ INBOX opened");
 
         const searchCriteria = ['UNSEEN'];
         const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: true };
         const messages = await connection.search(searchCriteria, fetchOptions);
-
-        console.log(`📧 Found ${messages.length} unread emails`);
 
         if (messages.length === 0) {
             connection.end();
             return;
         }
 
-        console.log(`📧 Processing ${messages.length} new emails...`);
+        console.log(`📧 Found ${messages.length} NEW emails! Processing...`);
 
         for (const item of messages) {
+            // 1. FETCH BOTH HEADER AND BODY
+            const headerPart = item.parts.find(part => part.which === 'HEADER');
+            const textPart = item.parts.find(part => part.which === 'TEXT');
+
+            if (!headerPart || !textPart) {
+                console.log("⚠️ Skipping email (Missing Header or Text part)");
+                continue;
+            }
+
+            // 2. COMBINE THEM (Crucial Step for 'mailparser')
+            // We stitch the raw header and the raw body together so the parser sees the "From" field.
+            const fullEmailSource = headerPart.body + textPart.body;
+            
+            // 3. PARSE
+            const mail = await simpleParser(fullEmailSource);
+            
+            // 4. EXTRACT SENDER SAFELY
+            const senderEmail = mail.from?.value?.[0]?.address || mail.from?.text || "unknown@example.com";
+            const senderName = mail.from?.value?.[0]?.name || "Citizen";
+
+            console.log(`📨 Processing email from: ${senderEmail} (${senderName})`);
+
+            // AI PROCESSING
             try {
-                // FIXED: Safe email parsing with null checks
-                const all = item.parts && item.parts.find(part => part.which === 'TEXT');
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const result = await model.generateContent(`
+                    Extract JSON (name, phone, type, loc, desc) from email text: 
+                    "${mail.text}". 
+                    If phone missing, use "Not Provided".
+                    Return ONLY raw JSON.
+                `);
                 
-                if (!all || !all.body) {
-                    console.warn("⚠️  Email has no TEXT body, skipping");
-                    continue;
-                }
-                
-                const id = item.attributes && item.attributes.uid ? item.attributes.uid : Date.now();
-                const idHeader = "Imap-Id: "+id + "\r\n";
-                
-                // Parse the full email including headers
-                const header = item.parts && item.parts.find(part => part.which === 'HEADER');
-                const fullEmail = header ? header.body + "\r\n\r\n" + all.body : all.body;
-                
-                const mail = await simpleParser(fullEmail);
-                
-                // FIXED: Safe extraction with fallbacks and better email parsing
-                const emailBody = mail.text || mail.html || "";
-                
-                // Try multiple ways to extract sender email
-                let senderEmail = "unknown@example.com";
-                if (mail.from && mail.from.value && mail.from.value[0] && mail.from.value[0].address) {
-                    senderEmail = mail.from.value[0].address;
-                } else if (mail.from && mail.from.text) {
-                    // Try to extract from text format
-                    const emailMatch = mail.from.text.match(/[\w.-]+@[\w.-]+\.\w+/);
-                    if (emailMatch) senderEmail = emailMatch[0];
-                }
-                
-                const subject = mail.subject || "No Subject";
-                
-                console.log(`📧 Extracted sender: ${senderEmail}`);
-                
-                if (!emailBody || emailBody.length < 10) {
-                    console.warn("⚠️  Email body too short or empty, skipping");
-                    continue;
-                }
-                
-                console.log(`📨 Processing email from: ${senderEmail}`);
-                console.log(`📨 Email subject: ${subject}`);
-                console.log(`📨 Email body preview: ${emailBody.substring(0, 100)}...`);
-
-                const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                const prompt = `
-                    Analyze this email text and extract complaint details for a government portal.
-                    
-                    EMAIL TEXT: "${emailBody}"
-                    
-                    Task: Extract these fields into JSON: 
-                    - name (Citizen Name)
-                    - phone (Mobile Number, if not found use "Not Provided")
-                    - type (Complaint Type e.g., Pothole, Garbage, Street Light)
-                    - loc (Location)
-                    - desc (Description)
-                    
-                    Rules:
-                    - If phone is missing, use "Not Provided".
-                    - If type is unclear, categorize it as "General Grievance".
-                    - Return ONLY valid JSON. No Markdown.
-                `;
-
-                console.log("🤖 Sending to Gemini AI for extraction...");
-                const result = await model.generateContent(prompt);
-                const response = await result.response;
-                let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-                
-                console.log("🤖 AI Response:", text);
-                
+                let text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
                 const data = JSON.parse(text);
-                console.log("✅ JSON parsed successfully:", data);
+                
+                const newId = "MAIL-" + Math.floor(Math.random() * 9000);
                 
                 const newComplaint = {
-                    id: "SIG-" + Math.floor(1000 + Math.random() * 9000),
-                    type: data.type || "General Grievance",
+                    id: newId, 
+                    type: data.type || "General",
                     loc: data.loc || "Delhi",
                     status: "Pending",
-                    date: new Date().toISOString().split('T')[0],
-                    phone: data.phone !== "Not Provided" ? data.phone : "",
-                    dept: "Auto-Assigned",
-                    desc: (data.desc || "Email complaint") + ` (Via Email from: ${data.name || "Unknown"})`,
-                    img: "",
+                    date: new Date().toISOString().split('T')[0], 
+                    phone: data.phone,
+                    dept: "Auto-Assigned", 
+                    desc: data.desc + ` (Email: ${data.name || senderName})`,
+                    img: "", 
                     lat: "28.6139", 
                     long: "77.2090",
-                    email: senderEmail
+                    email: senderEmail // Store for dashboard use
                 };
 
+                // ADD TO DASHBOARD LIST
                 complaints.unshift(newComplaint);
-                console.log(`✅ Email Converted to Complaint: ${newComplaint.id}`);
-                console.log(`✅ Total complaints now: ${complaints.length}`);
-                
-                // SEND SENDGRID AUTO-REPLY EMAIL
-                console.log(`📧 Sender email extracted: ${senderEmail}`);
-                
-                if (senderEmail !== "unknown@example.com" && senderEmail.includes('@')) {
-                    console.log(`📧 Attempting to send auto-reply to ${senderEmail}...`);
-                    const emailSent = await sendAutoReplyEmail(senderEmail, newComplaint);
-                    if (emailSent) {
-                        console.log(`✅ Auto-reply sent successfully to ${senderEmail}`);
-                    } else {
-                        console.log(`⚠️  Auto-reply failed to send to ${senderEmail}`);
-                    }
+                console.log(`✅ Registered Complaint: ${newId}`);
+
+                // SEND AUTO-REPLY (Only if email is valid)
+                if (senderEmail && !senderEmail.includes('unknown')) {
+                    await sendAutoReplyEmail(senderEmail, newComplaint);
                 } else {
-                    console.log(`⚠️  Cannot send auto-reply - invalid sender email: ${senderEmail}`);
-                }
-                
-                // Also send SMS if phone available
-                if (data.phone && data.phone !== "Not Provided" && data.phone.length > 9) {
-                    console.log(`📱 Sending SMS to ${data.phone}...`);
-                    await sendComplaintSMS(newComplaint);
-                } else {
-                    console.log(`ℹ️  No valid phone number, SMS skipped`);
+                    console.warn(`⚠️ Cannot send auto-reply - invalid sender email: ${senderEmail}`);
                 }
 
-            } catch (emailError) {
-                console.error("❌ Error processing individual email:", emailError.message);
-                console.error("❌ Stack:", emailError.stack);
-                // Continue to next email instead of crashing
-                continue;
+            } catch (aiError) { 
+                console.error("❌ AI/Parsing Error:", aiError.message); 
             }
         }
         
         connection.end();
-        console.log("✅ Email check completed");
 
     } catch (error) {
-        console.error("❌ IMAP Connection Error:", error.message);
-        // Don't crash, just log and try again next cycle
+        console.error("⚠️ IMAP Connection Error:", error.message);
     }
 }
 
@@ -669,4 +602,5 @@ app.listen(PORT, () => {
     console.log("========================================\n");
     console.log("✅ Server is ready and listening for requests");
 });
+
 
