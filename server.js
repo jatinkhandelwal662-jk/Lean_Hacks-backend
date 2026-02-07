@@ -387,8 +387,39 @@ app.get("/api/new-complaint", (req, res) => {
     // Send the live list of complaints to the frontend
     res.json(complaints);
 });
+// ==========================================
+// 📞 API: GENERATE VOICE TOKEN (For Citizen.html)
+// ==========================================
+app.get("/api/voice-token", (req, res) => {
+    try {
+        const identity = 'citizen'; // This name matches the one in your audit call
+
+        // Create a "Grant" (Permission to use Voice)
+        const voiceGrant = new VoiceGrant({
+            incomingAllow: true, // Allow receiving calls
+        });
+
+        // Create the Token
+        const token = new AccessToken(
+            ACCOUNT_SID,
+            API_KEY_SID,
+            API_KEY_SECRET,
+            { identity: identity }
+        );
+
+        token.addGrant(voiceGrant);
+
+        // Send it to the browser
+        res.json({ token: token.toJwt() });
+
+    } catch (error) {
+        console.error("Token Error:", error);
+        res.status(500).json({ error: "Failed to generate token" });
+    }
+});
 
 app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
+
 
 
 
