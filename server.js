@@ -206,7 +206,7 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏛️ दिल्ली सुदर्शन</h1>
+            <h1>🏛️ CIVIC ASSISTANT</h1>
             <p style="margin: 10px 0 0 0; font-size: 14px;">Citizen Grievance Portal</p>
         </div>
         
@@ -215,7 +215,7 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
             
             <p>Dear Citizen,</p>
             
-            <p>Thank you for reaching out to Delhi Sudarshan. Your complaint has been successfully registered in our system and will be forwarded to the concerned department.</p>
+            <p>Thank you for reaching out to CIVIC ASSISTANT. Your complaint has been successfully registered in our system and will be forwarded to the concerned department.</p>
             
             <div class="info-box">
                 <h3 style="margin-top: 0; color: #667eea;">📋 Complaint Details</h3>
@@ -263,12 +263,12 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
                 📞 Support: 1800-XXX-XXXX</p>
                 
                 <p style="margin-top: 20px;">
-                    This is an automated message from Delhi Sudarshan Grievance Portal.<br>
+                    This is an automated message from CIVIC ASSISTANT Grievance Portal.<br>
                     Please do not reply directly to this email for new complaints.
                 </p>
                 
                 <p style="margin-top: 20px; font-size: 11px; color: #999;">
-                    © 2025 Delhi Sudarshan. All rights reserved.
+                    © 2026 CIVIC ASSISTANT. All rights reserved.
                 </p>
             </div>
         </div>
@@ -277,7 +277,7 @@ async function sendAutoReplyEmail(recipientEmail, complaintData) {
 </html>
         `,
         text: `
-Delhi Sudarshan - Complaint Registered
+CIVIC ASSISTANT - Complaint Registered
 
 Dear Citizen,
 
@@ -300,7 +300,7 @@ What happens next?
 3. You will receive updates via email and SMS
 4. The department will work to resolve your issue
 
-Thank you for using Delhi Sudarshan Grievance Portal.
+Thank you for using CIVIC ASSISTANT Grievance Portal.
 
 ---
 This is an automated message.
@@ -409,7 +409,7 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
             
             try {
                 await client.messages.create({
-                    body: `दिल्ली सुदर्शन\nComplaint Registered!\nID: ${newComplaint.id}\nCategory: ${newComplaint.type}\nDept: ${newComplaint.dept}\n\nUpload Evidence:\n${uploadLink}`,
+                    body: `CIVIC ASSISTANT\nComplaint Registered!\nID: ${newComplaint.id}\nCategory: ${newComplaint.type}\nDept: ${newComplaint.dept}\n\nUpload Evidence:\n${uploadLink}`,
                     from: TWILIO_PHONE,
                     to: recipient
                 });
@@ -515,7 +515,7 @@ app.post("/api/audit-ivr", (req, res) => {
     });
 
     gather.say({ voice: 'Polly.Aditi', language: 'hi-IN' }, 
-        `नमस्ते। यह दिल्ली सुदर्शन से एक सेवा सत्यापन कॉल है। ${dept} विभाग का दावा है कि उन्होंने आपकी समस्या का समाधान कर दिया है। ${loc} क्षेत्र के निवासी होने के नाते, क्या आप इस कार्य से संतुष्ट हैं? हाँ के लिए 1 दबाएँ। नहीं के लिए 2 दबाएँ।`
+        `नमस्ते। यह नागरिक सहायक से एक सेवा सत्यापन कॉल है। ${dept} विभाग का दावा है कि उन्होंने आपकी समस्या का समाधान कर दिया है। ${loc} क्षेत्र के निवासी होने के नाते, क्या आप इस कार्य से संतुष्ट हैं? हाँ के लिए 1 दबाएँ। नहीं के लिए 2 दबाएँ।`
     );
 
     twiml.say({ voice: 'Polly.Aditi', language: 'hi-IN' }, "हमें कोई इनपुट नहीं मिला। धन्यवाद।");
@@ -745,7 +745,7 @@ async function sendComplaintSMS(data) {
 
     try {
         await client.messages.create({
-            body: `दिल्ली सुदर्शन\nEmail Complaint Registered!\nID: ${data.id}\nDept: ${data.dept}\nStatus: Pending\n\nUpload Evidence:\n${uploadLink}`,
+            body: `CIVIC ASSISTANT\nEmail Complaint Registered!\nID: ${data.id}\nDept: ${data.dept}\nStatus: Pending\n\nUpload Evidence:\n${uploadLink}`,
             from: TWILIO_PHONE,
             to: recipient
         });
@@ -787,4 +787,5 @@ app.listen(PORT, () => {
     console.log("   - PWD: Roads/Potholes/Infrastructure");
     console.log("   - DJB: Water Supply/Pipeline issues");
 });
+
 
