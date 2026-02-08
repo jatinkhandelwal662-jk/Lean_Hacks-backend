@@ -429,19 +429,23 @@ app.post("/api/new-complaint", express.json(), async (req, res) => {
 
 // Photo Upload API
 app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
+    // 1. Basic Validation
     if (!req.file) return res.json({ success: false, error: "No file uploaded" });
 
     const filePath = req.file.path;
     const fullImageUrl = `${PUBLIC_URL}/uploads/${req.file.filename}`;
     
+    // 2. Find the complaint
     const item = complaints.find(c => c.id === req.body.id);
     if(!item) return res.json({ success: false, error: "Complaint ID not found" });
 
     try {
         console.log(`🤖 AI Verifying Image for ${item.id}...`);
 
+        // 3. Setup AI Model
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+        // 4. The STRICT Verification Prompt
         const prompt = `
             Analyze this image for a government grievance portal.
             Is this image related to civic issues like: Garbage, Potholes, Water leakage, Broken roads, Street lights, Sewer issues, or Construction debris?
@@ -451,25 +455,32 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
         `;
 
         const imagePart = fileToGenerativePart(filePath, req.file.mimetype);
+
+        // 5. Generate Result
         const result = await model.generateContent([prompt, imagePart]);
         const response = await result.response;
-        const text = response.text().trim();
+        const text = response.text().trim(); // Remove extra spaces
 
         console.log(`🤖 AI Verdict: [${text}]`);
 
-        if (text.includes("VALID")) { 
+        // 6. Handle AI Decision
+        if (text === "VALID") { 
+            // Accepted
             item.img = fullImageUrl; 
             item.status = "Pending"; 
             item.lat = req.body.lat; 
             item.long = req.body.long; 
+            
             res.json({ success: true, url: fullImageUrl, spam: false });
         } else {
-            console.log("❌ Blocked by AI: Invalid Image");
+            // Rejected
+            console.log("Blocked by AI: Invalid Image");
             res.json({ success: false, spam: true });
         }
 
     } catch (error) {
         console.error("AI Error:", error);
+        // Fallback: If AI crashes, allow upload but warn
         item.img = fullImageUrl;
         item.status = "Pending";
         res.json({ success: true, url: fullImageUrl, warning: "AI Check Skipped" });
@@ -787,6 +798,7 @@ app.listen(PORT, () => {
     console.log("   - PWD: Roads/Potholes/Infrastructure");
     console.log("   - DJB: Water Supply/Pipeline issues");
 });
+
 
 
 
