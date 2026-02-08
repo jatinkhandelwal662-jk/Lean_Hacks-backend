@@ -440,7 +440,7 @@ app.post("/api/upload-photo", upload.single("photo"), async (req, res) => {
     try {
         console.log(`🤖 AI Verifying Image for ${item.id}...`);
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         const prompt = `
             Analyze this image for a government grievance portal.
@@ -787,5 +787,6 @@ app.listen(PORT, () => {
     console.log("   - PWD: Roads/Potholes/Infrastructure");
     console.log("   - DJB: Water Supply/Pipeline issues");
 });
+
 
 
